@@ -156,7 +156,31 @@ Each action lives in its own directory with its own `action.yml`, source code, a
 
 ## Contributing
 
-Contributions are welcome. See [CLAUDE.md](CLAUDE.md) for development guidelines. This project follows the [Conventional Commits](https://www.conventionalcommits.org/) standard.
+Contributions are welcome. This project follows the [Conventional Commits](https://www.conventionalcommits.org/) standard.
+
+### CI/CD
+
+GitHub Actions powers the CI/CD pipeline for this repository:
+
+- **CI** — Runs on every push and pull request. Lints, tests, and builds all affected actions. Only actions with changes in their directory are tested to keep feedback fast.
+- **Release** — Triggered by tags following semver (e.g., `v1.0.0`). Builds and publishes the affected actions to the GitHub Marketplace. Each action is versioned independently using scoped tags (e.g., `gemini-pr-review/v1.2.0`).
+
+### Pull Request Process
+
+1. Fork the repository and create a branch off `main`
+2. Make your changes, following the commit convention above
+3. Ensure all CI checks pass
+4. Open a pull request with a clear description of the change
+5. A maintainer will review and merge
+
+### Adding a New Action
+
+1. Create a new directory at the repository root named after your action (prefix with `gemini-`)
+2. Add an `action.yml` defining inputs, outputs, and the runtime
+3. Implement the action in `src/`
+4. Add tests
+5. Update this README with the action's description and inputs
+6. Open a PR
 
 ## License
 
