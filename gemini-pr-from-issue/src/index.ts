@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import {
   createGeminiModel,
   generateContent,
+  truncateText,
   getOctokitClient,
   getRepoContext,
   getIssue,
@@ -43,13 +44,14 @@ async function run(): Promise<void> {
       .map((item) => item.path);
 
     // 3. Ask Gemini to identify which files are relevant and what changes to make
+    const fileListText = truncateText(fileList.join("\n"), 50000, "file list");
     const planPrompt = `You are a software engineer. A GitHub issue has been filed requesting a change to the repository.
 
 **Issue #${issue.number}: ${issue.title}**
 ${issue.body ?? "No description provided."}
 
 **Repository files:**
-${fileList.join("\n")}
+${fileListText}
 
 Analyze the issue and determine which files need to be created or modified to address it.
 Respond with a JSON array of file paths that are relevant. Only include files that need changes.
@@ -66,18 +68,21 @@ Respond ONLY with a JSON array of strings, e.g.: ["src/config.ts", "README.md"]`
       relevantFiles = fileList.slice(0, 10);
     }
 
-    // 4. Fetch content of relevant existing files
+    // 4. Fetch content of relevant existing files (capped at 20 files, 10K chars each)
+    const maxFilesForContext = 20;
+    const maxFileChars = 10000;
     const fileContents: Record<string, string> = {};
-    for (const filePath of relevantFiles) {
+    for (const filePath of relevantFiles.slice(0, maxFilesForContext)) {
       if (fileList.includes(filePath)) {
         try {
-          fileContents[filePath] = await getFileContent(
+          const raw = await getFileContent(
             octokit,
             owner,
             repo,
             filePath,
             defaultBranch.name,
           );
+          fileContents[filePath] = truncateText(raw, maxFileChars, filePath);
         } catch {
           core.debug(`Could not read ${filePath}, may be a new file`);
         }

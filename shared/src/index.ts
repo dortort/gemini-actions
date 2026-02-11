@@ -1,4 +1,9 @@
-export { createGeminiModel, generateContent } from "./gemini";
+export {
+  createGeminiModel,
+  generateContent,
+  countTokens,
+  truncateText,
+} from "./gemini";
 export {
   getOctokitClient,
   getRepoContext,

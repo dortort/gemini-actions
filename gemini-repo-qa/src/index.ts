@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import {
   createGeminiModel,
   generateContent,
+  truncateText,
   getOctokitClient,
   getRepoContext,
   getIssue,
@@ -135,8 +136,7 @@ Respond ONLY with a JSON array of strings.`;
           filePath,
           defaultBranch.name,
         );
-        // Limit individual file size
-        fileContents[filePath] = content.slice(0, 5000);
+        fileContents[filePath] = truncateText(content, 5000, filePath);
       } catch {
         core.debug(`Could not read ${filePath}`);
       }
