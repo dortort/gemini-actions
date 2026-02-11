@@ -1,0 +1,22 @@
+name: "Gemini Dependency Impact"
+description: "Analyzes dependency update PRs by reading changelogs and cross-referencing usage in the codebase"
+author: "dortort"
+
+inputs:
+  pr_number:
+    description: "The dependency update PR number to analyze"
+    required: true
+  gemini_api_key:
+    description: "Google Gemini API key"
+    required: true
+  github_token:
+    description: "GitHub token with repo write access"
+    required: true
+  model:
+    description: "Gemini model to use"
+    required: false
+    default: "gemini-2.0-flash"
+
+runs:
+  using: "node20"
+  main: "dist/index.js"

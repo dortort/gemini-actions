@@ -1,0 +1,29 @@
+name: "Gemini Repo QA"
+description: "Conversational Q&A interface within GitHub Issues or Discussions powered by Gemini"
+author: "dortort"
+
+inputs:
+  issue_number:
+    description: "The issue number containing the question (mutually exclusive with discussion_id)"
+    required: false
+  discussion_id:
+    description: "The discussion ID containing the question (mutually exclusive with issue_number)"
+    required: false
+  source_paths:
+    description: "Directories or globs to include as context (e.g., src/**)"
+    required: false
+    default: "src/**"
+  gemini_api_key:
+    description: "Google Gemini API key"
+    required: true
+  github_token:
+    description: "GitHub token with repo write access"
+    required: true
+  model:
+    description: "Gemini model to use"
+    required: false
+    default: "gemini-2.0-flash"
+
+runs:
+  using: "node20"
+  main: "dist/index.js"

@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "*/v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Determine scope
+        id: scope
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ "$TAG" == */* ]]; then
+            ACTION=$(echo "$TAG" | cut -d'/' -f1)
+            VERSION=$(echo "$TAG" | cut -d'/' -f2)
+          else
+            ACTION="all"
+            VERSION="$TAG"
+          fi
+          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing: action=$ACTION version=$VERSION"
+
+      - name: Build scoped action
+        if: steps.scope.outputs.action != 'all'
+        run: npm run build --workspace=${{ steps.scope.outputs.action }}
+
+      - name: Build all actions
+        if: steps.scope.outputs.action == 'all'
+        run: npm run build
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ steps.scope.outputs.action }} ${{ steps.scope.outputs.version }}
+          generate_release_notes: true
+
+      - name: Update major version tag
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ "$TAG" == */* ]]; then
+            PREFIX=$(echo "$TAG" | cut -d'/' -f1)
+            MAJOR=$(echo "$TAG" | cut -d'/' -f2 | grep -oP 'v\d+')
+            git tag -f "$PREFIX/$MAJOR" HEAD
+            git push -f origin "$PREFIX/$MAJOR"
+          else
+            MAJOR=$(echo "$TAG" | grep -oP 'v\d+')
+            git tag -f "$MAJOR" HEAD
+            git push -f origin "$MAJOR"
+          fi

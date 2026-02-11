@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      actions: ${{ steps.changes.outputs.actions }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: changes
+        name: Detect changed actions
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
+            # First push to branch — treat all actions as changed
+            ACTIONS='["gemini-pr-from-issue","gemini-pr-review","gemini-dependency-impact","gemini-test-failure-diagnosis","gemini-datadog-responder","gemini-repo-qa"]'
+          else
+            BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+            CHANGED=$(git diff --name-only "$BASE" HEAD | grep -oP '^(gemini-[^/]+)/' | sort -u | sed 's|/||')
+            if [ -n "$(git diff --name-only "$BASE" HEAD | grep -E '^(shared/|package\.json|tsconfig\.base\.json)')" ]; then
+              # Shared code changed — rebuild all actions
+              ACTIONS='["gemini-pr-from-issue","gemini-pr-review","gemini-dependency-impact","gemini-test-failure-diagnosis","gemini-datadog-responder","gemini-repo-qa"]'
+            elif [ -z "$CHANGED" ]; then
+              ACTIONS='[]'
+            else
+              ACTIONS=$(echo "$CHANGED" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            fi
+          fi
+          echo "actions=$ACTIONS" >> "$GITHUB_OUTPUT"
+          echo "Changed actions: $ACTIONS"
+
+  build:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.actions != '[]' }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        action: ${{ fromJson(needs.detect-changes.outputs.actions) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared library
+        run: npm run build --workspace=shared
+
+      - name: Build ${{ matrix.action }}
+        run: npm run build --workspace=${{ matrix.action }}
+
+      - name: Verify dist output
+        run: test -f ${{ matrix.action }}/dist/index.js

@@ -1,0 +1,14 @@
+{
+  "name": "gemini-dependency-impact",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "ncc build src/index.ts -o dist --source-map --license licenses.txt"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.1",
+    "@actions/github": "^6.0.0",
+    "@google/generative-ai": "^0.21.0",
+    "@gemini-actions/shared": "*"
+  }
+}

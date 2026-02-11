@@ -1,0 +1,22 @@
+{
+  "name": "gemini-actions",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "gemini-pr-from-issue",
+    "gemini-pr-review",
+    "gemini-dependency-impact",
+    "gemini-test-failure-diagnosis",
+    "gemini-datadog-responder",
+    "gemini-repo-qa"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=shared && npm run build --workspace=gemini-pr-from-issue --workspace=gemini-pr-review --workspace=gemini-dependency-impact --workspace=gemini-test-failure-diagnosis --workspace=gemini-datadog-responder --workspace=gemini-repo-qa",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "^0.38.3",
+    "typescript": "^5.7.0",
+    "@types/node": "^20.17.0"
+  }
+}

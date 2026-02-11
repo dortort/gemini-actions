@@ -1,0 +1,25 @@
+name: "Gemini Test Failure Diagnosis"
+description: "Diagnoses CI test failures by analyzing test output, failing test source, and the PR diff"
+author: "dortort"
+
+inputs:
+  pr_number:
+    description: "The PR number with failing tests"
+    required: true
+  test_output:
+    description: "Path or artifact name containing the test output"
+    required: true
+  gemini_api_key:
+    description: "Google Gemini API key"
+    required: true
+  github_token:
+    description: "GitHub token with repo write access"
+    required: true
+  model:
+    description: "Gemini model to use"
+    required: false
+    default: "gemini-2.0-flash"
+
+runs:
+  using: "node20"
+  main: "dist/index.js"
