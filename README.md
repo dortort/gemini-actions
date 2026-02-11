@@ -33,31 +33,32 @@ Performs an automated code review on an open pull request using Gemini. Posts in
 
 ---
 
-#### `gemini-issue-triage`
+#### `gemini-dependency-impact`
 
-Automatically labels, assigns, and prioritizes new issues using Gemini. Analyzes the issue title, body, and repository context to determine the appropriate labels and assignees.
+When a dependency update PR is opened (by Dependabot, Renovate, or manually), Gemini reads the dependency's changelog and breaking change notes, then cross-references them against your actual usage of that dependency in the codebase. Posts a comment summarizing the real impact: which of your files use changed APIs, whether breaking changes affect you, and what migration steps are needed.
 
-**Use case:** Incoming issues in a busy repo get categorized instantly — labeled by area (`frontend`, `backend`, `infra`), tagged by type (`bug`, `feature`, `question`), and assigned to the right team member.
+**Use case:** Renovate opens a PR bumping `axios` from v1 to v2. Instead of a developer manually reading the migration guide and grepping the codebase, Gemini reports: "You call `axios.create()` with `cancelToken` in 3 files — this API was removed in v2. Switch to `AbortController`. All other usage is compatible."
+
+**Why Gemini:** Deterministic tools can tell you a major version changed. Only an LLM can read a changelog written in prose, understand which breaking changes are relevant to your specific usage patterns, and produce actionable migration guidance.
 
 **Inputs:**
-- `issue_number` — The issue to triage
-- `label_set` — JSON array of available labels and their descriptions
-- `assignee_map` — JSON map of areas to default assignees
+- `pr_number` — The dependency update PR to analyze
 - `gemini_api_key` — Google Gemini API key
 - `github_token` — Token with repo write access
 
 ---
 
-#### `gemini-release-notes`
+#### `gemini-test-failure-diagnosis`
 
-Generates release notes from merged pull requests between two refs. Uses Gemini to summarize changes into user-facing language grouped by category.
+When CI tests fail on a pull request, Gemini reads the test output, the failing test source code, and the PR diff to explain the causal link between the change and the failure. Posts a comment with a diagnosis and a suggested fix.
 
-**Use case:** Cut a release and get a polished changelog without manually reviewing every merged PR. The output is written to a GitHub Release or committed as a `CHANGELOG` entry.
+**Use case:** A PR touches a validation function and 4 tests fail. Instead of the developer reading raw test output and tracing the failure back to their change, Gemini reports: "Your change to `validateEmail()` now rejects `+` characters in the local part. Tests `test_plus_addressing`, `test_subaddress_gmail`, and 2 others use addresses with `+` and now fail. Either update the regex to allow `+` or update the test fixtures."
+
+**Why Gemini:** Deterministic CI shows you _that_ a test failed and the stack trace. Only an LLM can read the diff, read the test, and explain _why_ the change caused the failure — bridging the semantic gap between "what you changed" and "what broke."
 
 **Inputs:**
-- `base_ref` — Starting ref (e.g., previous tag)
-- `head_ref` — Ending ref (e.g., `main`)
-- `output` — `release` or `changelog`
+- `pr_number` — The PR with failing tests
+- `test_output` — Path or artifact name containing the test output
 - `gemini_api_key` — Google Gemini API key
 - `github_token` — Token with repo write access
 
@@ -79,14 +80,17 @@ Queries Datadog for alerts, anomalies, or metric thresholds, then uses Gemini to
 
 ---
 
-#### `gemini-stale-pr-nudge`
+#### `gemini-repo-qa`
 
-Scans for pull requests that have gone stale (no activity for a configurable period), uses Gemini to summarize the current state of each PR, and posts a comment nudging the author or reviewers to take action.
+Enables a conversational Q&A interface within GitHub Issues or Discussions. When a user posts a question (triggered by a label, keyword, or discussion category), Gemini reads the relevant source files in the repository to produce a grounded answer with file references.
 
-**Use case:** PRs that go dormant get a friendly, context-aware nudge instead of a generic bot message. Gemini reads the PR diff and review threads to generate a useful summary of what's blocking progress.
+**Use case:** A new contributor opens an issue asking "How does the authentication middleware work?" Gemini reads the middleware source, the route definitions, and the auth config, then replies with an explanation referencing specific files and line numbers — a response that would otherwise require a senior engineer's time.
+
+**Why Gemini:** No deterministic tool can answer open-ended questions about code. This requires reading source files, understanding their relationships, and producing a natural language explanation. Search tools can find files; only an LLM can explain what they do and how they connect.
 
 **Inputs:**
-- `stale_days` — Number of days of inactivity before a PR is considered stale
+- `issue_number` or `discussion_id` — The question to answer
+- `source_paths` — Directories or globs to include as context (e.g., `src/**`)
 - `gemini_api_key` — Google Gemini API key
 - `github_token` — Token with repo write access
 
@@ -95,19 +99,22 @@ Scans for pull requests that have gone stale (no activity for a configurable per
 Each action is published independently on the GitHub Marketplace. Use them in your workflows like any other action:
 
 ```yaml
-name: Triage new issues
+name: Diagnose test failures
 on:
-  issues:
-    types: [opened]
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
 
 jobs:
-  triage:
+  diagnose:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: dortort/gemini-actions/gemini-issue-triage@v1
+      - uses: actions/checkout@v4
+      - uses: dortort/gemini-actions/gemini-test-failure-diagnosis@v1
         with:
-          issue_number: ${{ github.event.issue.number }}
-          label_set: '[{"name": "bug", "description": "Something is broken"}]'
+          pr_number: ${{ github.event.workflow_run.pull_requests[0].number }}
+          test_output: test-results/output.log
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -124,11 +131,22 @@ gemini-actions/
 │   ├── action.yml
 │   ├── src/
 │   └── package.json
-├── gemini-issue-triage/
+├── gemini-dependency-impact/
 │   ├── action.yml
 │   ├── src/
 │   └── package.json
-├── ...
+├── gemini-test-failure-diagnosis/
+│   ├── action.yml
+│   ├── src/
+│   └── package.json
+├── gemini-datadog-responder/
+│   ├── action.yml
+│   ├── src/
+│   └── package.json
+├── gemini-repo-qa/
+│   ├── action.yml
+│   ├── src/
+│   └── package.json
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml
@@ -177,6 +195,7 @@ All commits must follow the [Conventional Commits](https://www.conventionalcommi
 ```
 feat(gemini-pr-review): add support for review strictness levels
 fix(gemini-datadog-responder): handle empty metric responses
+feat(gemini-dependency-impact): detect renamed APIs in changelogs
 ci: add release workflow for marketplace publishing
 ```
 
