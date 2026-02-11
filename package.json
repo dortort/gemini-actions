@@ -11,12 +11,14 @@
     "gemini-repo-qa"
   ],
   "scripts": {
-    "build": "npm run build --workspace=shared && npm run build --workspace=gemini-pr-from-issue --workspace=gemini-pr-review --workspace=gemini-dependency-impact --workspace=gemini-test-failure-diagnosis --workspace=gemini-datadog-responder --workspace=gemini-repo-qa",
+    "build": "npx nx run-many --target=build",
+    "build:affected": "npx nx affected --target=build",
     "test": "npm run test --workspaces --if-present"
   },
   "devDependencies": {
+    "@types/node": "^20.17.0",
     "@vercel/ncc": "^0.38.3",
-    "typescript": "^5.7.0",
-    "@types/node": "^20.17.0"
+    "nx": "^22.5.0",
+    "typescript": "^5.7.0"
   }
 }

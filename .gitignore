@@ -5,3 +5,4 @@ node_modules/
 # Build artifacts are committed for GitHub Actions
 # but we ignore local dev artifacts
 *.tsbuildinfo
+.nx/
