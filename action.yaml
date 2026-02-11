@@ -1,0 +1,22 @@
+name: "Gemini Actions"
+description: "A collection of GitHub Actions powered by Google Gemini that automate repository workflows"
+author: "dortort"
+
+inputs:
+  action:
+    description: "This is a meta-package. Use the individual actions in subdirectories (e.g. dortort/gemini-actions/gemini-pr-review@v1)."
+    required: false
+
+runs:
+  using: "composite"
+  steps:
+    - name: Info
+      shell: bash
+      run: |
+        echo "::notice::This is a meta-package. Use individual actions instead:"
+        echo "::notice::  - dortort/gemini-actions/gemini-pr-review@v1"
+        echo "::notice::  - dortort/gemini-actions/gemini-pr-from-issue@v1"
+        echo "::notice::  - dortort/gemini-actions/gemini-dependency-impact@v1"
+        echo "::notice::  - dortort/gemini-actions/gemini-test-failure-diagnosis@v1"
+        echo "::notice::  - dortort/gemini-actions/gemini-datadog-responder@v1"
+        echo "::notice::  - dortort/gemini-actions/gemini-repo-qa@v1"
