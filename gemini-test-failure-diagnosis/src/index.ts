@@ -4,6 +4,7 @@ import * as path from "path";
 import {
   createGeminiModel,
   generateContent,
+  truncateText,
   getOctokitClient,
   getRepoContext,
   getPullRequest,
@@ -53,12 +54,7 @@ async function run(): Promise<void> {
     }
 
     // Truncate very long test output to fit in the prompt
-    const maxTestOutput = 15000;
-    if (testOutput.length > maxTestOutput) {
-      testOutput =
-        testOutput.slice(0, maxTestOutput) +
-        `\n\n... [truncated ${testOutput.length - maxTestOutput} characters]`;
-    }
+    testOutput = truncateText(testOutput, 15000, "test output");
 
     // 3. Extract failing test file names from the output
     const testFilePatterns = extractTestFilePaths(testOutput);
@@ -89,13 +85,16 @@ async function run(): Promise<void> {
 
 **PR Diff (changes made):**
 \`\`\`diff
-${pr.files
-  .map(
-    (f) =>
-      `--- ${f.filename} ---\n${f.patch ?? "(binary or no diff)"}`,
-  )
-  .join("\n\n")
-  .slice(0, 15000)}
+${truncateText(
+  pr.files
+    .map(
+      (f) =>
+        `--- ${f.filename} ---\n${f.patch ?? "(binary or no diff)"}`,
+    )
+    .join("\n\n"),
+  15000,
+  "PR diff",
+)}
 \`\`\`
 
 **Test Output (failures):**
@@ -107,7 +106,7 @@ ${
   Object.keys(testSources).length > 0
     ? `**Failing Test Source Code:**
 ${Object.entries(testSources)
-  .map(([path, content]) => `--- ${path} ---\n\`\`\`\n${content.slice(0, 5000)}\n\`\`\``)
+  .map(([path, content]) => `--- ${path} ---\n\`\`\`\n${truncateText(content, 5000, path)}\n\`\`\``)
   .join("\n\n")}`
     : ""
 }

@@ -1,9 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.generateContent = exports.createGeminiModel = void 0;
+exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
 var gemini_1 = require("./gemini");
 Object.defineProperty(exports, "createGeminiModel", { enumerable: true, get: function () { return gemini_1.createGeminiModel; } });
 Object.defineProperty(exports, "generateContent", { enumerable: true, get: function () { return gemini_1.generateContent; } });
+Object.defineProperty(exports, "countTokens", { enumerable: true, get: function () { return gemini_1.countTokens; } });
+Object.defineProperty(exports, "truncateText", { enumerable: true, get: function () { return gemini_1.truncateText; } });
 var github_1 = require("./github");
 Object.defineProperty(exports, "getOctokitClient", { enumerable: true, get: function () { return github_1.getOctokitClient; } });
 Object.defineProperty(exports, "getRepoContext", { enumerable: true, get: function () { return github_1.getRepoContext; } });

@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import {
   createGeminiModel,
   generateContent,
+  truncateText,
   getOctokitClient,
   getRepoContext,
   getPullRequest,
@@ -176,6 +177,15 @@ async function run(): Promise<void> {
     }
 
     // 5. Send to Gemini for analysis
+    const maxUsageCharsPerDep = 5000;
+    const usageSections = Object.entries(usageContext)
+      .map(([name, usages]) => {
+        if (usages.length === 0) return `### ${name}\nNo direct imports found in source files.`;
+        const joined = usages.join("\n\n");
+        return `### ${name}\n${truncateText(joined, maxUsageCharsPerDep, `${name} usage`)}`;
+      })
+      .join("\n\n");
+
     const prompt = `You are a dependency upgrade analyst. A pull request updates the following dependencies.
 For each dependency, analyze the impact on the codebase.
 
@@ -188,16 +198,11 @@ ${depChanges
   .join("\n")}
 
 **Usage in Codebase:**
-${Object.entries(usageContext)
-  .map(
-    ([name, usages]) =>
-      `### ${name}\n${usages.length > 0 ? usages.join("\n\n") : "No direct imports found in source files."}`,
-  )
-  .join("\n\n")}
+${usageSections}
 
 **PR Diff:**
 \`\`\`diff
-${pr.diff.slice(0, 10000)}
+${truncateText(pr.diff, 10000, "PR diff")}
 \`\`\`
 
 For each dependency, provide:

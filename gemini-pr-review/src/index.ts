@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import {
   createGeminiModel,
   generateContent,
+  truncateText,
   getOctokitClient,
   getRepoContext,
   getPullRequest,
@@ -52,7 +53,28 @@ async function run(): Promise<void> {
     const pr = await getPullRequest(octokit, owner, repo, prNumber);
     core.info(`PR: ${pr.title} (${pr.files.length} files changed)`);
 
-    // 2. Build the review prompt
+    // 2. Build the review prompt with truncated diffs
+    const maxPatchPerFile = 10000;
+    const maxTotalDiff = 200000;
+
+    let totalDiffChars = 0;
+    const fileSections: string[] = [];
+    for (const f of pr.files) {
+      const patch = f.patch ?? "Binary file or no diff available";
+      const truncatedPatch = truncateText(patch, maxPatchPerFile, `${f.filename} diff`);
+      if (totalDiffChars + truncatedPatch.length > maxTotalDiff) {
+        fileSections.push(
+          `### ${f.filename} (${f.status}: +${f.additions} -${f.deletions})\n` +
+            `*Diff omitted — total diff budget (${(maxTotalDiff / 1000).toFixed(0)}K chars) reached*`,
+        );
+        continue;
+      }
+      totalDiffChars += truncatedPatch.length;
+      fileSections.push(
+        `### ${f.filename} (${f.status}: +${f.additions} -${f.deletions})\n\`\`\`diff\n${truncatedPatch}\n\`\`\``,
+      );
+    }
+
     const prompt = `You are an expert code reviewer. Review the following pull request.
 
 **Review Strictness:** ${strictness}
@@ -62,15 +84,7 @@ ${STRICTNESS_PROMPTS[strictness]}
 **PR Description:** ${pr.body ?? "No description provided."}
 
 **Changed Files:**
-${pr.files
-  .map(
-    (f) =>
-      `### ${f.filename} (${f.status}: +${f.additions} -${f.deletions})
-\`\`\`diff
-${f.patch ?? "Binary file or no diff available"}
-\`\`\``,
-  )
-  .join("\n\n")}
+${fileSections.join("\n\n")}
 
 Provide your review as a JSON object with this structure:
 {

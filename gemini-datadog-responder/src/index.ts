@@ -3,6 +3,7 @@ import * as https from "https";
 import {
   createGeminiModel,
   generateContent,
+  truncateText,
   getOctokitClient,
   getRepoContext,
   postComment,
@@ -155,7 +156,7 @@ async function run(): Promise<void> {
 
 **Datadog ${isMonitorId ? "Monitor" : "Metrics"} Data:**
 \`\`\`json
-${datadogData.slice(0, 10000)}
+${truncateText(datadogData, 10000, "Datadog data")}
 \`\`\`
 
 **Recent Commits (last 10):**
