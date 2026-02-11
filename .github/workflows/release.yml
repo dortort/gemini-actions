@@ -39,11 +39,11 @@ jobs:
 
       - name: Build scoped action
         if: steps.scope.outputs.action != 'all'
-        run: npm run build --workspace=${{ steps.scope.outputs.action }}
+        run: npx nx run ${{ steps.scope.outputs.action }}:build
 
       - name: Build all actions
         if: steps.scope.outputs.action == 'all'
-        run: npm run build
+        run: npx nx run-many --target=build
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
