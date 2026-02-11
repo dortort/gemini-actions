@@ -4,8 +4,6 @@ A collection of GitHub Actions powered by [Google Gemini](https://ai.google.dev/
 
 ## Actions
 
-### Planned First Batch
-
 #### `gemini-pr-from-issue`
 
 Reads a GitHub issue, analyzes the request using Gemini, generates a code change, and opens a pull request that addresses it.
