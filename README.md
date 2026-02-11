@@ -1,17 +1,23 @@
 # Gemini Actions
 
+[![CI](https://github.com/dortort/gemini-actions/actions/workflows/ci.yml/badge.svg)](https://github.com/dortort/gemini-actions/actions/workflows/ci.yml)
+[![Release](https://github.com/dortort/gemini-actions/actions/workflows/release.yml/badge.svg)](https://github.com/dortort/gemini-actions/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-20-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Nx](https://img.shields.io/badge/Nx-22-143055?logo=nx&logoColor=white)](https://nx.dev/)
+[![Google Gemini](https://img.shields.io/badge/Google%20Gemini-API-8E75B2?logo=googlegemini&logoColor=white)](https://ai.google.dev/)
+
 A collection of GitHub Actions powered by [Google Gemini](https://ai.google.dev/) that automate repository workflows. Each action leverages Gemini's capabilities to analyze context, make decisions, and take meaningful actions on your repositories.
 
 ## Actions
 
-| Action | Description |
-|--------|-------------|
-| [gemini-pr-from-issue](gemini-pr-from-issue/) | Reads an issue, generates a code change, and opens a pull request |
-| [gemini-pr-review](gemini-pr-review/) | Automated code review with inline comments and configurable strictness |
-| [gemini-dependency-impact](gemini-dependency-impact/) | Analyzes dependency update PRs against actual codebase usage |
-| [gemini-test-failure-diagnosis](gemini-test-failure-diagnosis/) | Diagnoses CI test failures by linking PR changes to broken tests |
-| [gemini-datadog-responder](gemini-datadog-responder/) | Interprets Datadog alerts and takes repository actions |
-| [gemini-repo-qa](gemini-repo-qa/) | Answers codebase questions in Issues or Discussions with source references |
+- **[gemini-pr-from-issue](gemini-pr-from-issue/)** — Reads an issue, generates a code change, and opens a pull request.
+- **[gemini-pr-review](gemini-pr-review/)** — Automated code review with inline comments and configurable strictness.
+- **[gemini-dependency-impact](gemini-dependency-impact/)** — Analyzes dependency update PRs against actual codebase usage.
+- **[gemini-test-failure-diagnosis](gemini-test-failure-diagnosis/)** — Diagnoses CI test failures by linking PR changes to broken tests.
+- **[gemini-datadog-responder](gemini-datadog-responder/)** — Interprets Datadog alerts and takes repository actions.
+- **[gemini-repo-qa](gemini-repo-qa/)** — Answers codebase questions in Issues or Discussions with source references.
 
 ## Contributing
 
