@@ -20,6 +20,7 @@ Deterministic tools can tell you a major version changed. Only an LLM can read a
 - **npm** — `package.json` / `package-lock.json`
 - **pip** — `requirements.txt` / `Pipfile`
 - **Go** — `go.mod`
+- **Terraform** — `.terraform.lock.hcl`
 
 ## Usage
 
@@ -33,6 +34,7 @@ on:
       - "package-lock.json"
       - "requirements.txt"
       - "go.mod"
+      - ".terraform.lock.hcl"
 
 jobs:
   analyze:
