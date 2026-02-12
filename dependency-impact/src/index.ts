@@ -88,6 +88,35 @@ function parseDependencyChanges(diff: string, files: { filename: string; patch?:
         }
       }
     }
+
+    // Parse .terraform.lock.hcl changes (Terraform)
+    if (file.filename.endsWith(".terraform.lock.hcl")) {
+      let currentProvider = "";
+      const removed = new Map<string, string>();
+      const added = new Map<string, string>();
+
+      for (const line of file.patch.split("\n")) {
+        // Track current provider from context, added, or removed lines
+        const providerMatch = line.match(/^[ +-]?\s*provider\s+"([^"]+)"/);
+        if (providerMatch) {
+          currentProvider = providerMatch[1];
+        }
+
+        // Extract pinned version
+        const versionMatch = line.match(/^([-+])\s*version\s*=\s*"(\d+\S*)"/);
+        if (versionMatch && currentProvider) {
+          if (versionMatch[1] === "-") removed.set(currentProvider, versionMatch[2]);
+          else added.set(currentProvider, versionMatch[2]);
+        }
+      }
+
+      for (const [name, toVersion] of added) {
+        const fromVersion = removed.get(name);
+        if (fromVersion && fromVersion !== toVersion) {
+          changes.push({ name, fromVersion, toVersion, ecosystem: "terraform" });
+        }
+      }
+    }
   }
 
   return changes;
@@ -132,7 +161,7 @@ async function run(): Promise<void> {
     const tree = await getRepoTree(octokit, owner, repo, defaultBranch.sha);
     const sourceFiles = tree
       .filter((item) => item.type === "blob")
-      .filter((item) => /\.(ts|js|tsx|jsx|py|go|java|rb|rs)$/.test(item.path))
+      .filter((item) => /\.(ts|js|tsx|jsx|py|go|java|rb|rs|tf)$/.test(item.path))
       .filter((item) => !item.path.includes("node_modules"))
       .map((item) => item.path);
 
@@ -250,6 +279,17 @@ function getImportPatterns(depName: string, ecosystem: string): string[] {
       return [`import ${depName}`, `from ${depName}`];
     case "go":
       return [`"${depName}"`, `"${depName}/`];
+    case "terraform": {
+      // Extract short provider name from registry path
+      // e.g. "registry.terraform.io/hashicorp/aws" -> "aws"
+      const shortName = depName.split("/").pop() || depName;
+      return [
+        `resource "${shortName}_`,
+        `data "${shortName}_`,
+        `provider "${shortName}"`,
+        `module "${shortName}"`,
+      ];
+    }
     default:
       return [depName];
   }
