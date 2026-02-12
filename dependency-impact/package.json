@@ -1,5 +1,5 @@
 {
-  "name": "gemini-pr-from-issue",
+  "name": "dependency-impact",
   "version": "1.0.0",
   "private": true,
   "scripts": {

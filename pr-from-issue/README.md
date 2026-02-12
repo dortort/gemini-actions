@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dortort/gemini-actions/gemini-pr-from-issue@v1
+      - uses: dortort/gemini-actions/pr-from-issue@v1
         with:
           issue_number: ${{ github.event.issue.number }}
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}

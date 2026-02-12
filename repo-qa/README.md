@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dortort/gemini-actions/gemini-repo-qa@v1
+      - uses: dortort/gemini-actions/repo-qa@v1
         with:
           issue_number: ${{ github.event.issue.number }}
           source_paths: "src/**,lib/**"
@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dortort/gemini-actions/gemini-repo-qa@v1
+      - uses: dortort/gemini-actions/repo-qa@v1
         with:
           discussion_id: ${{ github.event.discussion.number }}
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}

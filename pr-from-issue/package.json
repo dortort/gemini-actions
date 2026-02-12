@@ -1,5 +1,5 @@
 {
-  "name": "gemini-repo-qa",
+  "name": "pr-from-issue",
   "version": "1.0.0",
   "private": true,
   "scripts": {
