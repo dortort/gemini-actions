@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dortort/gemini-actions/gemini-dependency-impact@v1
+      - uses: dortort/gemini-actions/dependency-impact@v1
         with:
           pr_number: ${{ github.event.pull_request.number }}
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}

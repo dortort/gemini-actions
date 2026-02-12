@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dortort/gemini-actions/gemini-test-failure-diagnosis@v1
+      - uses: dortort/gemini-actions/test-failure-diagnosis@v1
         with:
           pr_number: ${{ github.event.workflow_run.pull_requests[0].number }}
           test_output: test-results/output.log

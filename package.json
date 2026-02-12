@@ -3,12 +3,12 @@
   "private": true,
   "workspaces": [
     "shared",
-    "gemini-pr-from-issue",
-    "gemini-pr-review",
-    "gemini-dependency-impact",
-    "gemini-test-failure-diagnosis",
-    "gemini-datadog-responder",
-    "gemini-repo-qa"
+    "pr-from-issue",
+    "pr-review",
+    "dependency-impact",
+    "test-failure-diagnosis",
+    "datadog-responder",
+    "repo-qa"
   ],
   "scripts": {
     "build": "npx nx run-many --target=build",

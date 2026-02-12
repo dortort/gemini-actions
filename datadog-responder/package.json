@@ -1,5 +1,5 @@
 {
-  "name": "gemini-test-failure-diagnosis",
+  "name": "datadog-responder",
   "version": "1.0.0",
   "private": true,
   "scripts": {

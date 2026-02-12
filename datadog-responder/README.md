@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dortort/gemini-actions/gemini-datadog-responder@v1
+      - uses: dortort/gemini-actions/datadog-responder@v1
         with:
           datadog_api_key: ${{ secrets.DD_API_KEY }}
           datadog_app_key: ${{ secrets.DD_APP_KEY }}

@@ -33,9 +33,9 @@ All commits must follow the [Conventional Commits](https://www.conventionalcommi
 **Scope** should be the action name when the change targets a specific action:
 
 ```
-feat(gemini-pr-review): add support for review strictness levels
-fix(gemini-datadog-responder): handle empty metric responses
-feat(gemini-dependency-impact): detect renamed APIs in changelogs
+feat(pr-review): add support for review strictness levels
+fix(datadog-responder): handle empty metric responses
+feat(dependency-impact): detect renamed APIs in changelogs
 ci: add release workflow for marketplace publishing
 ```
 
