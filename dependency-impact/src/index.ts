@@ -11,87 +11,7 @@ import {
   getDefaultBranch,
   getRepoTree,
 } from "@gemini-actions/shared";
-
-interface DependencyChange {
-  name: string;
-  fromVersion: string;
-  toVersion: string;
-  ecosystem: string;
-}
-
-function parseDependencyChanges(diff: string, files: { filename: string; patch?: string }[]): DependencyChange[] {
-  const changes: DependencyChange[] = [];
-
-  for (const file of files) {
-    if (!file.patch) continue;
-
-    // Parse package.json changes (npm)
-    if (file.filename.endsWith("package.json") || file.filename.endsWith("package-lock.json")) {
-      const depRegex = /^[-+]\s*"([^"]+)":\s*"[^]*?(\d+\.\d+\.\d+[^"]*)"/gm;
-      const removed = new Map<string, string>();
-      const added = new Map<string, string>();
-
-      for (const line of file.patch.split("\n")) {
-        const match = line.match(/^([-+])\s*"([^"]+)":\s*"[~^]?(\d+[^"]*)"/)
-        if (match) {
-          if (match[1] === "-") removed.set(match[2], match[3]);
-          else added.set(match[2], match[3]);
-        }
-      }
-
-      for (const [name, toVersion] of added) {
-        const fromVersion = removed.get(name);
-        if (fromVersion && fromVersion !== toVersion) {
-          changes.push({ name, fromVersion, toVersion, ecosystem: "npm" });
-        }
-      }
-    }
-
-    // Parse requirements.txt changes (Python)
-    if (file.filename.endsWith("requirements.txt") || file.filename.endsWith("Pipfile")) {
-      const removed = new Map<string, string>();
-      const added = new Map<string, string>();
-
-      for (const line of file.patch.split("\n")) {
-        const match = line.match(/^([-+])([a-zA-Z0-9_-]+)[=<>~!]+(\d+\S*)/);
-        if (match) {
-          if (match[1] === "-") removed.set(match[2], match[3]);
-          else added.set(match[2], match[3]);
-        }
-      }
-
-      for (const [name, toVersion] of added) {
-        const fromVersion = removed.get(name);
-        if (fromVersion && fromVersion !== toVersion) {
-          changes.push({ name, fromVersion, toVersion, ecosystem: "pip" });
-        }
-      }
-    }
-
-    // Parse go.mod changes (Go)
-    if (file.filename === "go.mod") {
-      const removed = new Map<string, string>();
-      const added = new Map<string, string>();
-
-      for (const line of file.patch.split("\n")) {
-        const match = line.match(/^([-+])\s*(\S+)\s+v(\S+)/);
-        if (match) {
-          if (match[1] === "-") removed.set(match[2], match[3]);
-          else added.set(match[2], match[3]);
-        }
-      }
-
-      for (const [name, toVersion] of added) {
-        const fromVersion = removed.get(name);
-        if (fromVersion && fromVersion !== toVersion) {
-          changes.push({ name, fromVersion, toVersion, ecosystem: "go" });
-        }
-      }
-    }
-  }
-
-  return changes;
-}
+import { parseDependencyChanges, getImportPatterns } from "./parsers";
 
 async function run(): Promise<void> {
   try {
@@ -132,7 +52,7 @@ async function run(): Promise<void> {
     const tree = await getRepoTree(octokit, owner, repo, defaultBranch.sha);
     const sourceFiles = tree
       .filter((item) => item.type === "blob")
-      .filter((item) => /\.(ts|js|tsx|jsx|py|go|java|rb|rs)$/.test(item.path))
+      .filter((item) => /\.(ts|js|tsx|jsx|py|go|java|rb|rs|tf)$/.test(item.path))
       .filter((item) => !item.path.includes("node_modules"))
       .map((item) => item.path);
 
@@ -232,26 +152,6 @@ ${analysis}
     } else {
       core.setFailed("An unexpected error occurred");
     }
-  }
-}
-
-function getImportPatterns(depName: string, ecosystem: string): string[] {
-  switch (ecosystem) {
-    case "npm":
-      return [
-        `from "${depName}"`,
-        `from '${depName}'`,
-        `require("${depName}")`,
-        `require('${depName}')`,
-        `from "${depName}/`,
-        `from '${depName}/`,
-      ];
-    case "pip":
-      return [`import ${depName}`, `from ${depName}`];
-    case "go":
-      return [`"${depName}"`, `"${depName}/`];
-    default:
-      return [depName];
   }
 }
 
