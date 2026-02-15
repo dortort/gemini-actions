@@ -122,6 +122,28 @@ describe("parseDependencyChanges", () => {
       expect(result[0].ecosystem).toBe("terraform");
     });
 
+    it("handles provider block where context line is in different hunk from version line", () => {
+      const patch = [
+        ` provider "registry.terraform.io/hashicorp/aws" {`,
+        `-  version     = "5.40.0"`,
+        `+  version     = "5.50.0"`,
+        `   constraints = ">= 5.0.0"`,
+        ` }`,
+      ].join("\n");
+
+      const result = parseDependencyChanges("", [
+        { filename: ".terraform.lock.hcl", patch },
+      ]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        name: "registry.terraform.io/hashicorp/aws",
+        fromVersion: "5.40.0",
+        toVersion: "5.50.0",
+        ecosystem: "terraform",
+      });
+    });
+
     it("ignores files without a patch", () => {
       const result = parseDependencyChanges("", [
         { filename: ".terraform.lock.hcl" },
@@ -151,6 +173,74 @@ describe("parseDependencyChanges", () => {
         },
       ]);
     });
+  });
+
+  describe("pip", () => {
+    it("detects version changes in requirements.txt", () => {
+      const patch = [
+        `-django==3.2.0`,
+        `+django==4.2.0`,
+        ` requests==2.28.1`,
+        `-flask==2.0.1`,
+        `+flask==2.3.0`,
+      ].join("\n");
+
+      const result = parseDependencyChanges("", [
+        { filename: "requirements.txt", patch },
+      ]);
+
+      expect(result).toHaveLength(2);
+      expect(result).toContainEqual({
+        name: "django",
+        fromVersion: "3.2.0",
+        toVersion: "4.2.0",
+        ecosystem: "pip",
+      });
+      expect(result).toContainEqual({
+        name: "flask",
+        fromVersion: "2.0.1",
+        toVersion: "2.3.0",
+        ecosystem: "pip",
+      });
+    });
+  });
+
+  describe("go", () => {
+    it("detects version changes in go.mod", () => {
+      const patch = [
+        ` require (`,
+        `-    github.com/gin-gonic/gin v1.9.0`,
+        `+    github.com/gin-gonic/gin v1.10.0`,
+        `     github.com/stretchr/testify v1.8.4`,
+        ` )`,
+      ].join("\n");
+
+      const result = parseDependencyChanges("", [
+        { filename: "go.mod", patch },
+      ]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        name: "github.com/gin-gonic/gin",
+        fromVersion: "1.9.0",
+        toVersion: "1.10.0",
+        ecosystem: "go",
+      });
+    });
+  });
+
+  it("returns empty array when changes are not dependency-related", () => {
+    const patch = [
+      `-  "name": "my-app",`,
+      `+  "name": "my-awesome-app",`,
+      `   "version": "1.0.0"`,
+    ].join("\n");
+
+    const result = parseDependencyChanges("", [
+      { filename: "package.json", patch },
+    ]);
+
+    expect(result).toHaveLength(0);
   });
 });
 
@@ -191,6 +281,31 @@ describe("getImportPatterns", () => {
 
       expect(patterns).toContain(`from "axios"`);
       expect(patterns).toContain(`require("axios")`);
+    });
+  });
+
+  describe("pip", () => {
+    it("returns import and from patterns", () => {
+      const patterns = getImportPatterns("django", "pip");
+
+      expect(patterns.some((p) => p.includes("import django"))).toBe(true);
+      expect(patterns.some((p) => p.includes("from django"))).toBe(true);
+    });
+  });
+
+  describe("go", () => {
+    it("returns quoted import patterns", () => {
+      const patterns = getImportPatterns("github.com/gin-gonic/gin", "go");
+
+      expect(patterns.some((p) => p.includes('"github.com/gin-gonic/gin"'))).toBe(true);
+    });
+  });
+
+  describe("default", () => {
+    it("returns dep name for unknown ecosystems", () => {
+      const patterns = getImportPatterns("some-package", "unknown");
+
+      expect(patterns).toContain("some-package");
     });
   });
 });
