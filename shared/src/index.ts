@@ -17,6 +17,7 @@ export {
   createBranch,
   getDefaultBranch,
   getRepoTree,
+  listReleaseNotesBetween,
 } from "./github";
 export type {
   PullRequestInfo,
