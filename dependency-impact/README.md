@@ -21,6 +21,7 @@ Deterministic tools can tell you a major version changed. Only an LLM can read a
 - **pip** — `requirements.txt` / `Pipfile`
 - **Go** — `go.mod`
 - **Terraform** — `.terraform.lock.hcl`
+- **Composer** — `composer.json` / `composer.lock`
 
 ## Usage
 
@@ -35,6 +36,8 @@ on:
       - "requirements.txt"
       - "go.mod"
       - ".terraform.lock.hcl"
+      - "composer.json"
+      - "composer.lock"
 
 jobs:
   analyze:
@@ -54,7 +57,7 @@ jobs:
 2. Scans source files (up to 100) for imports of the changed dependencies
 3. Fetches release notes using a layered approach:
    - For bot PRs (Dependabot, Renovate) with a populated body, uses the PR body directly — these bots already aggregate changelogs between versions
-   - Otherwise, tries the GitHub Releases API for dependencies with resolvable repos (Go modules, Terraform providers)
+   - Otherwise, tries the GitHub Releases API for dependencies with resolvable repos (Go modules, Terraform providers, npm packages, Composer packages)
    - Falls back to the PR body if GitHub Releases yields nothing
 4. Sends a tailored prompt to Gemini depending on whether usage was found:
    - **With usage**: cross-references release notes against actual code. Reports only confirmed breaking changes, required actions, and risk
@@ -68,7 +71,5 @@ The action needs real release notes to produce useful output — without them, a
 | Priority | Source | When used |
 |----------|--------|-----------|
 | 1 | PR body | PR author is a bot (`[bot]` suffix) and body has meaningful content (>50 chars) |
-| 2 | GitHub Releases API | Dependency maps to a GitHub repo (Go modules via path, Terraform providers via registry convention) |
+| 2 | GitHub Releases API | Dependency maps to a GitHub repo (Go modules via path, Terraform providers via registry convention, npm via registry lookup, Composer via Packagist lookup) |
 | 3 | PR body (fallback) | GitHub Releases returned nothing but the PR body has content |
-
-npm and pip packages cannot currently be resolved to GitHub repos automatically. For these ecosystems, release notes come from the PR body or are reported as unavailable.
