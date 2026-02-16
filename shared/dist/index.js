@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
+exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
 var gemini_1 = require("./gemini");
 Object.defineProperty(exports, "createGeminiModel", { enumerable: true, get: function () { return gemini_1.createGeminiModel; } });
 Object.defineProperty(exports, "generateContent", { enumerable: true, get: function () { return gemini_1.generateContent; } });
@@ -19,4 +19,5 @@ Object.defineProperty(exports, "createOrUpdateFile", { enumerable: true, get: fu
 Object.defineProperty(exports, "createBranch", { enumerable: true, get: function () { return github_1.createBranch; } });
 Object.defineProperty(exports, "getDefaultBranch", { enumerable: true, get: function () { return github_1.getDefaultBranch; } });
 Object.defineProperty(exports, "getRepoTree", { enumerable: true, get: function () { return github_1.getRepoTree; } });
+Object.defineProperty(exports, "listReleaseNotesBetween", { enumerable: true, get: function () { return github_1.listReleaseNotesBetween; } });
 //# sourceMappingURL=index.js.map

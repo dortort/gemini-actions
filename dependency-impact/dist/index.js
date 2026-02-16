@@ -31556,6 +31556,7 @@ exports.createOrUpdateFile = createOrUpdateFile;
 exports.createBranch = createBranch;
 exports.getDefaultBranch = getDefaultBranch;
 exports.getRepoTree = getRepoTree;
+exports.listReleaseNotesBetween = listReleaseNotesBetween;
 const github = __importStar(__nccwpck_require__(2146));
 function getOctokitClient(token) {
     return github.getOctokit(token);
@@ -31591,6 +31592,7 @@ async function getPullRequest(octokit, owner, repo, prNumber) {
         number: prResponse.data.number,
         title: prResponse.data.title,
         body: prResponse.data.body,
+        author: prResponse.data.user?.login ?? "",
         diff: diffResponse.data,
         files: filesResponse.data.map((f) => ({
             filename: f.filename,
@@ -31699,6 +31701,38 @@ async function getRepoTree(octokit, owner, repo, sha, recursive = true) {
         type: item.type,
     }));
 }
+async function listReleaseNotesBetween(octokit, owner, repo, fromVersion, toVersion) {
+    try {
+        const { data: releases } = await octokit.rest.repos.listReleases({
+            owner,
+            repo,
+            per_page: 100,
+        });
+        const normalize = (v) => v.replace(/^v/, "");
+        const from = normalize(fromVersion);
+        const to = normalize(toVersion);
+        const relevant = [];
+        let foundTo = false;
+        for (const release of releases) {
+            const tag = normalize(release.tag_name);
+            if (tag === to)
+                foundTo = true;
+            if (foundTo && tag !== from) {
+                if (release.body) {
+                    relevant.push({ tag: release.tag_name, body: release.body });
+                }
+            }
+            if (tag === from)
+                break;
+        }
+        if (relevant.length === 0)
+            return null;
+        return relevant.map((r) => `### ${r.tag}\n${r.body}`).join("\n\n");
+    }
+    catch {
+        return null;
+    }
+}
 //# sourceMappingURL=github.js.map
 
 /***/ }),
@@ -31709,7 +31743,7 @@ async function getRepoTree(octokit, owner, repo, sha, recursive = true) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
+exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
 var gemini_1 = __nccwpck_require__(9700);
 Object.defineProperty(exports, "createGeminiModel", ({ enumerable: true, get: function () { return gemini_1.createGeminiModel; } }));
 Object.defineProperty(exports, "generateContent", ({ enumerable: true, get: function () { return gemini_1.generateContent; } }));
@@ -31728,6 +31762,7 @@ Object.defineProperty(exports, "createOrUpdateFile", ({ enumerable: true, get: f
 Object.defineProperty(exports, "createBranch", ({ enumerable: true, get: function () { return github_1.createBranch; } }));
 Object.defineProperty(exports, "getDefaultBranch", ({ enumerable: true, get: function () { return github_1.getDefaultBranch; } }));
 Object.defineProperty(exports, "getRepoTree", ({ enumerable: true, get: function () { return github_1.getRepoTree; } }));
+Object.defineProperty(exports, "listReleaseNotesBetween", ({ enumerable: true, get: function () { return github_1.listReleaseNotesBetween; } }));
 //# sourceMappingURL=index.js.map
 
 /***/ }),
@@ -31774,6 +31809,19 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(6618));
 const shared_1 = __nccwpck_require__(7451);
 const parsers_1 = __nccwpck_require__(2149);
+function resolveGitHubRepo(dep) {
+    if (dep.ecosystem === "go" && dep.name.startsWith("github.com/")) {
+        const parts = dep.name.replace("github.com/", "").split("/");
+        if (parts.length >= 2)
+            return { owner: parts[0], repo: parts[1] };
+    }
+    if (dep.ecosystem === "terraform" && dep.name.startsWith("registry.terraform.io/")) {
+        const parts = dep.name.replace("registry.terraform.io/", "").split("/");
+        if (parts.length >= 2)
+            return { owner: parts[0], repo: `terraform-provider-${parts[1]}` };
+    }
+    return null;
+}
 async function run() {
     try {
         const prNumber = parseInt(core.getInput("pr_number", { required: true }), 10);
@@ -31839,13 +31887,42 @@ async function run() {
             return `### ${name}\n${(0, shared_1.truncateText)(joined, maxUsageCharsPerDep, `${name} usage`)}`;
         })
             .join("\n\n");
-        const prompt = `You are a dependency upgrade analyst. A pull request updates the following dependencies.
-For each dependency, analyze the impact on the codebase.
+        const isDependabot = /\[bot\]$/.test(pr.author);
+        const hasBody = pr.body != null && pr.body.trim().length > 50;
+        let releaseNotes = null;
+        if (isDependabot && hasBody) {
+            releaseNotes = pr.body;
+        }
+        else {
+            for (const dep of depChanges) {
+                const ghRepo = resolveGitHubRepo(dep);
+                if (ghRepo) {
+                    const notes = await (0, shared_1.listReleaseNotesBetween)(octokit, ghRepo.owner, ghRepo.repo, dep.fromVersion, dep.toVersion);
+                    if (notes) {
+                        releaseNotes = (releaseNotes ?? "") + `\n\n## ${dep.name}\n${notes}`;
+                    }
+                }
+            }
+            if (!releaseNotes && hasBody) {
+                releaseNotes = pr.body;
+            }
+        }
+        const prBodySection = releaseNotes
+            ? `**Release Notes:**\n${(0, shared_1.truncateText)(releaseNotes.trim(), 15000, "release notes")}`
+            : "**Release Notes:** No release notes available.";
+        const hasUsage = Object.values(usageContext).some(usages => usages.length > 0);
+        const depChangesList = depChanges
+            .map((d) => `- **${d.name}**: ${d.fromVersion} → ${d.toVersion} (${d.ecosystem})`)
+            .join("\n");
+        let prompt;
+        if (hasUsage) {
+            prompt = `You are a dependency upgrade analyst. A pull request updates the following dependencies.
+Cross-reference the release notes with actual usage sites in this codebase.
 
 **Dependency Changes:**
-${depChanges
-            .map((d) => `- **${d.name}**: ${d.fromVersion} → ${d.toVersion} (${d.ecosystem})`)
-            .join("\n")}
+${depChangesList}
+
+${prBodySection}
 
 **Usage in Codebase:**
 ${usageSections}
@@ -31855,14 +31932,34 @@ ${usageSections}
 ${(0, shared_1.truncateText)(pr.diff, 10000, "PR diff")}
 \`\`\`
 
-For each dependency, provide:
-1. **Breaking changes**: Known breaking changes between these versions that affect this codebase
-2. **Affected files**: Which files in the codebase use APIs that changed
-3. **Migration steps**: Specific steps needed to adapt the codebase (if any)
-4. **Risk assessment**: Low / Medium / High risk based on actual usage
+Respond with ONLY sections that have content. Skip empty sections entirely.
+- **Breaking changes affecting this codebase**: Only mention breaking changes that are confirmed by the release notes AND affect files shown in "Usage in Codebase". Do not speculate.
+- **Action required**: Specific code changes needed, referencing actual file paths and line content from the usage context.
+- **Risk assessment**: Low / Medium / High with a one-line justification.
 
-Format your response as a markdown report. Be specific — reference actual file paths and API usage from the codebase.
-If you don't have enough information about a dependency's changelog, say so and recommend reviewing the release notes manually.`;
+RULES:
+- Do NOT include generic advice like "review the changelog", "test in staging", "run terraform init", or "pin versions".
+- Do NOT fabricate examples, hypothetical scenarios, or breaking changes not confirmed by the release notes.
+- If the release notes do not mention breaking changes relevant to the detected usage, say "No breaking changes detected for current usage" and give a risk assessment.`;
+        }
+        else {
+            prompt = `You are a dependency upgrade analyst. A pull request updates the following dependencies.
+No usage of these dependencies was found in the source files.
+
+**Dependency Changes:**
+${depChangesList}
+
+${prBodySection}
+
+Summarize the key highlights from the release notes as a concise bulleted list (max 10 bullets).
+End with a one-line risk assessment (Low / Medium / High).
+
+RULES:
+- Do NOT fabricate impact analysis, example scenarios, or migration steps.
+- Do NOT reference files or APIs since no usage was found.
+- Do NOT include generic advice like "review the changelog", "test in staging", or "pin versions".
+- If no release notes are available, say "No release notes available and no usage detected — no action needed." and stop.`;
+        }
         const analysis = await (0, shared_1.generateContent)(model, prompt);
         // 6. Post the analysis as a comment
         const comment = `## Gemini Dependency Impact Analysis
@@ -31870,7 +31967,7 @@ If you don't have enough information about a dependency's changelog, say so and 
 ${analysis}
 
 ---
-*Analyzed ${depChanges.length} dependency change(s) across ${Object.values(usageContext).flat().length} usage site(s) — Generated by [gemini-dependency-impact](https://github.com/dortort/gemini-actions)*`;
+*${depChanges.length} dependency change(s) · ${Object.values(usageContext).flat().length} usage site(s) found — Generated by [gemini-dependency-impact](https://github.com/dortort/gemini-actions)*`;
         await (0, shared_1.postComment)(octokit, owner, repo, prNumber, comment);
         core.info("Dependency impact analysis posted");
     }
