@@ -229,6 +229,93 @@ describe("parseDependencyChanges", () => {
     });
   });
 
+  describe("composer", () => {
+    it("detects a package version change in composer.json", () => {
+      const patch = [
+        `-    "symfony/console": "^6.3"`,
+        `+    "symfony/console": "^7.0"`,
+      ].join("\n");
+
+      const result = parseDependencyChanges("", [
+        { filename: "composer.json", patch },
+      ]);
+
+      expect(result).toEqual([
+        {
+          name: "symfony/console",
+          fromVersion: "6.3",
+          toVersion: "7.0",
+          ecosystem: "composer",
+        },
+      ]);
+    });
+
+    it("detects version changes in composer.lock", () => {
+      const patch = [
+        `-            "name": "symfony/console",`,
+        `-            "version": "v6.3.12",`,
+        `+            "name": "symfony/console",`,
+        `+            "version": "v7.0.4",`,
+      ].join("\n");
+
+      const result = parseDependencyChanges("", [
+        { filename: "composer.lock", patch },
+      ]);
+
+      expect(result).toEqual([
+        {
+          name: "symfony/console",
+          fromVersion: "6.3.12",
+          toVersion: "7.0.4",
+          ecosystem: "composer",
+        },
+      ]);
+    });
+
+    it("ignores unchanged versions in composer.json", () => {
+      const patch = [
+        `     "symfony/console": "^6.3"`,
+      ].join("\n");
+
+      const result = parseDependencyChanges("", [
+        { filename: "composer.json", patch },
+      ]);
+
+      expect(result).toEqual([]);
+    });
+
+    it("detects multiple changes in composer.lock", () => {
+      const patch = [
+        `-            "name": "symfony/console",`,
+        `-            "version": "v6.3.12",`,
+        `+            "name": "symfony/console",`,
+        `+            "version": "v7.0.4",`,
+        `-            "name": "guzzlehttp/guzzle",`,
+        `-            "version": "7.5.0",`,
+        `+            "name": "guzzlehttp/guzzle",`,
+        `+            "version": "7.8.1",`,
+      ].join("\n");
+
+      const result = parseDependencyChanges("", [
+        { filename: "composer.lock", patch },
+      ]);
+
+      expect(result).toHaveLength(2);
+      expect(result).toContainEqual({
+        name: "symfony/console",
+        fromVersion: "6.3.12",
+        toVersion: "7.0.4",
+        ecosystem: "composer",
+      });
+      expect(result).toContainEqual({
+        name: "guzzlehttp/guzzle",
+        fromVersion: "7.5.0",
+        toVersion: "7.8.1",
+        ecosystem: "composer",
+      });
+    });
+  });
+
   it("returns empty array when changes are not dependency-related", () => {
     const patch = [
       `-  "name": "my-app",`,
@@ -298,6 +385,15 @@ describe("getImportPatterns", () => {
       const patterns = getImportPatterns("github.com/gin-gonic/gin", "go");
 
       expect(patterns.some((p) => p.includes('"github.com/gin-gonic/gin"'))).toBe(true);
+    });
+  });
+
+  describe("composer", () => {
+    it("returns PHP namespace use patterns", () => {
+      const patterns = getImportPatterns("symfony/console", "composer");
+
+      expect(patterns).toContain(`use Symfony\\Console\\`);
+      expect(patterns).toContain(`use Symfony\\Console;`);
     });
   });
 
