@@ -50,8 +50,25 @@ jobs:
 
 ## How it works
 
-1. Fetches the PR diff and parses dependency version changes
+1. Fetches the PR diff and parses dependency version changes from lock files and manifests
 2. Scans source files (up to 100) for imports of the changed dependencies
-3. Extracts the relevant usage lines for context
-4. Asks Gemini to analyze breaking changes, affected files, migration steps, and risk level
+3. Fetches release notes using a layered approach:
+   - For bot PRs (Dependabot, Renovate) with a populated body, uses the PR body directly — these bots already aggregate changelogs between versions
+   - Otherwise, tries the GitHub Releases API for dependencies with resolvable repos (Go modules, Terraform providers)
+   - Falls back to the PR body if GitHub Releases yields nothing
+4. Sends a tailored prompt to Gemini depending on whether usage was found:
+   - **With usage**: cross-references release notes against actual code. Reports only confirmed breaking changes, required actions, and risk
+   - **Without usage**: summarizes release notes highlights. No fabricated impact analysis
 5. Posts the analysis as a PR comment
+
+## Release notes sourcing
+
+The action needs real release notes to produce useful output — without them, any LLM will fill the gap with speculation. Release notes are resolved in priority order:
+
+| Priority | Source | When used |
+|----------|--------|-----------|
+| 1 | PR body | PR author is a bot (`[bot]` suffix) and body has meaningful content (>50 chars) |
+| 2 | GitHub Releases API | Dependency maps to a GitHub repo (Go modules via path, Terraform providers via registry convention) |
+| 3 | PR body (fallback) | GitHub Releases returned nothing but the PR body has content |
+
+npm and pip packages cannot currently be resolved to GitHub repos automatically. For these ecosystems, release notes come from the PR body or are reported as unavailable.
