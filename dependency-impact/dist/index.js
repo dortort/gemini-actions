@@ -31773,75 +31773,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(6618));
 const shared_1 = __nccwpck_require__(7451);
-function parseDependencyChanges(diff, files) {
-    const changes = [];
-    for (const file of files) {
-        if (!file.patch)
-            continue;
-        // Parse package.json changes (npm)
-        if (file.filename.endsWith("package.json") || file.filename.endsWith("package-lock.json")) {
-            const depRegex = /^[-+]\s*"([^"]+)":\s*"[^]*?(\d+\.\d+\.\d+[^"]*)"/gm;
-            const removed = new Map();
-            const added = new Map();
-            for (const line of file.patch.split("\n")) {
-                const match = line.match(/^([-+])\s*"([^"]+)":\s*"[~^]?(\d+[^"]*)"/);
-                if (match) {
-                    if (match[1] === "-")
-                        removed.set(match[2], match[3]);
-                    else
-                        added.set(match[2], match[3]);
-                }
-            }
-            for (const [name, toVersion] of added) {
-                const fromVersion = removed.get(name);
-                if (fromVersion && fromVersion !== toVersion) {
-                    changes.push({ name, fromVersion, toVersion, ecosystem: "npm" });
-                }
-            }
-        }
-        // Parse requirements.txt changes (Python)
-        if (file.filename.endsWith("requirements.txt") || file.filename.endsWith("Pipfile")) {
-            const removed = new Map();
-            const added = new Map();
-            for (const line of file.patch.split("\n")) {
-                const match = line.match(/^([-+])([a-zA-Z0-9_-]+)[=<>~!]+(\d+\S*)/);
-                if (match) {
-                    if (match[1] === "-")
-                        removed.set(match[2], match[3]);
-                    else
-                        added.set(match[2], match[3]);
-                }
-            }
-            for (const [name, toVersion] of added) {
-                const fromVersion = removed.get(name);
-                if (fromVersion && fromVersion !== toVersion) {
-                    changes.push({ name, fromVersion, toVersion, ecosystem: "pip" });
-                }
-            }
-        }
-        // Parse go.mod changes (Go)
-        if (file.filename === "go.mod") {
-            const removed = new Map();
-            const added = new Map();
-            for (const line of file.patch.split("\n")) {
-                const match = line.match(/^([-+])\s*(\S+)\s+v(\S+)/);
-                if (match) {
-                    if (match[1] === "-")
-                        removed.set(match[2], match[3]);
-                    else
-                        added.set(match[2], match[3]);
-                }
-            }
-            for (const [name, toVersion] of added) {
-                const fromVersion = removed.get(name);
-                if (fromVersion && fromVersion !== toVersion) {
-                    changes.push({ name, fromVersion, toVersion, ecosystem: "go" });
-                }
-            }
-        }
-    }
-    return changes;
-}
+const parsers_1 = __nccwpck_require__(2149);
 async function run() {
     try {
         const prNumber = parseInt(core.getInput("pr_number", { required: true }), 10);
@@ -31856,7 +31788,7 @@ async function run() {
         const pr = await (0, shared_1.getPullRequest)(octokit, owner, repo, prNumber);
         core.info(`PR: ${pr.title}`);
         // 2. Parse dependency changes from the diff
-        const depChanges = parseDependencyChanges(pr.diff, pr.files);
+        const depChanges = (0, parsers_1.parseDependencyChanges)(pr.diff, pr.files);
         if (depChanges.length === 0) {
             core.info("No dependency version changes detected in this PR");
             await (0, shared_1.postComment)(octokit, owner, repo, prNumber, "## Gemini Dependency Impact Analysis\n\nNo dependency version changes detected in this PR.");
@@ -31868,14 +31800,14 @@ async function run() {
         const tree = await (0, shared_1.getRepoTree)(octokit, owner, repo, defaultBranch.sha);
         const sourceFiles = tree
             .filter((item) => item.type === "blob")
-            .filter((item) => /\.(ts|js|tsx|jsx|py|go|java|rb|rs)$/.test(item.path))
+            .filter((item) => /\.(ts|js|tsx|jsx|py|go|java|rb|rs|tf)$/.test(item.path))
             .filter((item) => !item.path.includes("node_modules"))
             .map((item) => item.path);
         // 4. Sample source files to find usage of changed dependencies
         const usageContext = {};
         for (const dep of depChanges) {
             usageContext[dep.name] = [];
-            const importPatterns = getImportPatterns(dep.name, dep.ecosystem);
+            const importPatterns = (0, parsers_1.getImportPatterns)(dep.name, dep.ecosystem);
             // Read a subset of source files to find imports
             for (const filePath of sourceFiles.slice(0, 100)) {
                 try {
@@ -31951,6 +31883,115 @@ ${analysis}
         }
     }
 }
+run();
+
+
+/***/ }),
+
+/***/ 2149:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.parseDependencyChanges = parseDependencyChanges;
+exports.getImportPatterns = getImportPatterns;
+function parseDependencyChanges(diff, files) {
+    const changes = [];
+    for (const file of files) {
+        if (!file.patch)
+            continue;
+        // Parse package.json changes (npm)
+        if (file.filename.endsWith("package.json") || file.filename.endsWith("package-lock.json")) {
+            const depRegex = /^[-+]\s*"([^"]+)":\s*"[^]*?(\d+\.\d+\.\d+[^"]*)"/gm;
+            const removed = new Map();
+            const added = new Map();
+            for (const line of file.patch.split("\n")) {
+                const match = line.match(/^([-+])\s*"([^"]+)":\s*"[~^]?(\d+[^"]*)"/);
+                if (match) {
+                    if (match[1] === "-")
+                        removed.set(match[2], match[3]);
+                    else
+                        added.set(match[2], match[3]);
+                }
+            }
+            for (const [name, toVersion] of added) {
+                const fromVersion = removed.get(name);
+                if (fromVersion && fromVersion !== toVersion) {
+                    changes.push({ name, fromVersion, toVersion, ecosystem: "npm" });
+                }
+            }
+        }
+        // Parse requirements.txt changes (Python)
+        if (file.filename.endsWith("requirements.txt") || file.filename.endsWith("Pipfile")) {
+            const removed = new Map();
+            const added = new Map();
+            for (const line of file.patch.split("\n")) {
+                const match = line.match(/^([-+])([a-zA-Z0-9_-]+)[=<>~!]+(\d+\S*)/);
+                if (match) {
+                    if (match[1] === "-")
+                        removed.set(match[2], match[3]);
+                    else
+                        added.set(match[2], match[3]);
+                }
+            }
+            for (const [name, toVersion] of added) {
+                const fromVersion = removed.get(name);
+                if (fromVersion && fromVersion !== toVersion) {
+                    changes.push({ name, fromVersion, toVersion, ecosystem: "pip" });
+                }
+            }
+        }
+        // Parse go.mod changes (Go)
+        if (file.filename === "go.mod") {
+            const removed = new Map();
+            const added = new Map();
+            for (const line of file.patch.split("\n")) {
+                const match = line.match(/^([-+])\s*(\S+)\s+v(\S+)/);
+                if (match) {
+                    if (match[1] === "-")
+                        removed.set(match[2], match[3]);
+                    else
+                        added.set(match[2], match[3]);
+                }
+            }
+            for (const [name, toVersion] of added) {
+                const fromVersion = removed.get(name);
+                if (fromVersion && fromVersion !== toVersion) {
+                    changes.push({ name, fromVersion, toVersion, ecosystem: "go" });
+                }
+            }
+        }
+        // Parse .terraform.lock.hcl changes (Terraform)
+        if (file.filename.endsWith(".terraform.lock.hcl")) {
+            let currentProvider = "";
+            const removed = new Map();
+            const added = new Map();
+            for (const line of file.patch.split("\n")) {
+                // Track current provider from context, added, or removed lines
+                const providerMatch = line.match(/^[ +-]\s*provider\s+"([^"]+)"/);
+                if (providerMatch) {
+                    currentProvider = providerMatch[1];
+                }
+                // Extract pinned version
+                const versionMatch = line.match(/^([-+])\s*version\s*=\s*"(\d+\S*)"/);
+                if (versionMatch && currentProvider) {
+                    if (versionMatch[1] === "-")
+                        removed.set(currentProvider, versionMatch[2]);
+                    else
+                        added.set(currentProvider, versionMatch[2]);
+                }
+            }
+            for (const [name, toVersion] of added) {
+                const fromVersion = removed.get(name);
+                if (fromVersion && fromVersion !== toVersion) {
+                    changes.push({ name, fromVersion, toVersion, ecosystem: "terraform" });
+                }
+            }
+        }
+    }
+    return changes;
+}
 function getImportPatterns(depName, ecosystem) {
     switch (ecosystem) {
         case "npm":
@@ -31966,11 +32007,20 @@ function getImportPatterns(depName, ecosystem) {
             return [`import ${depName}`, `from ${depName}`];
         case "go":
             return [`"${depName}"`, `"${depName}/`];
+        case "terraform": {
+            // Extract short provider name from registry path
+            // e.g. "registry.terraform.io/hashicorp/aws" -> "aws"
+            const shortName = depName.split("/").pop() || depName;
+            return [
+                `resource "${shortName}_`,
+                `data "${shortName}_`,
+                `provider "${shortName}"`,
+            ];
+        }
         default:
             return [depName];
     }
 }
-run();
 
 
 /***/ }),
