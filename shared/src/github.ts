@@ -6,6 +6,7 @@ export interface PullRequestInfo {
   number: number;
   title: string;
   body: string | null;
+  author: string;
   diff: string;
   files: PullRequestFile[];
   head: { ref: string; sha: string };
@@ -75,6 +76,7 @@ export async function getPullRequest(
     number: prResponse.data.number,
     title: prResponse.data.title,
     body: prResponse.data.body,
+    author: prResponse.data.user?.login ?? "",
     diff: diffResponse.data as unknown as string,
     files: filesResponse.data.map((f) => ({
       filename: f.filename,
@@ -257,4 +259,44 @@ export async function getRepoTree(
       path: item.path!,
       type: item.type!,
     }));
+}
+
+export async function listReleaseNotesBetween(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  fromVersion: string,
+  toVersion: string,
+): Promise<string | null> {
+  try {
+    const { data: releases } = await octokit.rest.repos.listReleases({
+      owner,
+      repo,
+      per_page: 100,
+    });
+
+    const normalize = (v: string) => v.replace(/^v/, "");
+    const from = normalize(fromVersion);
+    const to = normalize(toVersion);
+
+    const relevant: { tag: string; body: string }[] = [];
+    let foundTo = false;
+
+    for (const release of releases) {
+      const tag = normalize(release.tag_name);
+      if (tag === to) foundTo = true;
+      if (foundTo && tag !== from) {
+        if (release.body) {
+          relevant.push({ tag: release.tag_name, body: release.body });
+        }
+      }
+      if (tag === from) break;
+    }
+
+    if (relevant.length === 0) return null;
+
+    return relevant.map((r) => `### ${r.tag}\n${r.body}`).join("\n\n");
+  } catch {
+    return null;
+  }
 }
