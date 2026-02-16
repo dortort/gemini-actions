@@ -31809,7 +31809,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(6618));
 const shared_1 = __nccwpck_require__(7451);
 const parsers_1 = __nccwpck_require__(2149);
-function resolveGitHubRepo(dep) {
+async function resolveGitHubRepo(dep) {
     if (dep.ecosystem === "go" && dep.name.startsWith("github.com/")) {
         const parts = dep.name.replace("github.com/", "").split("/");
         if (parts.length >= 2)
@@ -31819,6 +31819,46 @@ function resolveGitHubRepo(dep) {
         const parts = dep.name.replace("registry.terraform.io/", "").split("/");
         if (parts.length >= 2)
             return { owner: parts[0], repo: `terraform-provider-${parts[1]}` };
+    }
+    if (dep.ecosystem === "npm") {
+        try {
+            const res = await fetch(`https://registry.npmjs.org/${dep.name}`, { signal: AbortSignal.timeout(5000) });
+            if (res.ok) {
+                const data = (await res.json());
+                const url = data?.repository?.url;
+                if (typeof url === "string") {
+                    const cleaned = url.replace(/^git\+/, "").replace(/\.git$/, "").replace(/^git:\/\//, "https://");
+                    const match = cleaned.match(/github\.com\/([^/]+)\/([^/]+)/);
+                    if (match)
+                        return { owner: match[1], repo: match[2] };
+                }
+            }
+        }
+        catch {
+            // Registry lookup failed — fall through
+        }
+    }
+    if (dep.ecosystem === "composer") {
+        try {
+            const res = await fetch(`https://packagist.org/packages/${dep.name}.json`, { signal: AbortSignal.timeout(5000) });
+            if (res.ok) {
+                const data = (await res.json());
+                const versions = data?.package?.versions;
+                if (versions && typeof versions === "object") {
+                    const firstKey = Object.keys(versions)[0];
+                    const url = versions[firstKey]?.source?.url;
+                    if (typeof url === "string") {
+                        const cleaned = url.replace(/\.git$/, "");
+                        const match = cleaned.match(/github\.com\/([^/]+)\/([^/]+)/);
+                        if (match)
+                            return { owner: match[1], repo: match[2] };
+                    }
+                }
+            }
+        }
+        catch {
+            // Registry lookup failed — fall through
+        }
     }
     return null;
 }
@@ -31848,7 +31888,7 @@ async function run() {
         const tree = await (0, shared_1.getRepoTree)(octokit, owner, repo, defaultBranch.sha);
         const sourceFiles = tree
             .filter((item) => item.type === "blob")
-            .filter((item) => /\.(ts|js|tsx|jsx|py|go|java|rb|rs|tf)$/.test(item.path))
+            .filter((item) => /\.(ts|js|tsx|jsx|py|go|java|rb|rs|tf|php)$/.test(item.path))
             .filter((item) => !item.path.includes("node_modules"))
             .map((item) => item.path);
         // 4. Sample source files to find usage of changed dependencies
@@ -31895,7 +31935,7 @@ async function run() {
         }
         else {
             for (const dep of depChanges) {
-                const ghRepo = resolveGitHubRepo(dep);
+                const ghRepo = await resolveGitHubRepo(dep);
                 if (ghRepo) {
                     const notes = await (0, shared_1.listReleaseNotesBetween)(octokit, ghRepo.owner, ghRepo.repo, dep.fromVersion, dep.toVersion);
                     if (notes) {
@@ -32019,6 +32059,57 @@ function parseDependencyChanges(diff, files) {
                 }
             }
         }
+        // Parse composer.json changes (Composer)
+        if (file.filename.endsWith("composer.json")) {
+            const removed = new Map();
+            const added = new Map();
+            for (const line of file.patch.split("\n")) {
+                const match = line.match(/^([-+])\s*"([^"]+\/[^"]+)":\s*"[~^]?(\d+[^"]*)"/);
+                if (match) {
+                    if (match[1] === "-")
+                        removed.set(match[2], match[3]);
+                    else
+                        added.set(match[2], match[3]);
+                }
+            }
+            for (const [name, toVersion] of added) {
+                const fromVersion = removed.get(name);
+                if (fromVersion && fromVersion !== toVersion) {
+                    changes.push({ name, fromVersion, toVersion, ecosystem: "composer" });
+                }
+            }
+        }
+        // Parse composer.lock changes (Composer)
+        if (file.filename.endsWith("composer.lock")) {
+            const removed = new Map();
+            const added = new Map();
+            let removedName = "";
+            let addedName = "";
+            for (const line of file.patch.split("\n")) {
+                const nameMatch = line.match(/^([-+])\s*"name":\s*"([^"]+)"/);
+                if (nameMatch) {
+                    if (nameMatch[1] === "-")
+                        removedName = nameMatch[2];
+                    else
+                        addedName = nameMatch[2];
+                }
+                const versionMatch = line.match(/^([-+])\s*"version":\s*"v?(\d+[^"]*)"/);
+                if (versionMatch) {
+                    if (versionMatch[1] === "-") {
+                        removed.set(removedName, versionMatch[2]);
+                    }
+                    else {
+                        added.set(addedName, versionMatch[2]);
+                    }
+                }
+            }
+            for (const [name, toVersion] of added) {
+                const fromVersion = removed.get(name);
+                if (fromVersion && fromVersion !== toVersion) {
+                    changes.push({ name, fromVersion, toVersion, ecosystem: "composer" });
+                }
+            }
+        }
         // Parse requirements.txt changes (Python)
         if (file.filename.endsWith("requirements.txt") || file.filename.endsWith("Pipfile")) {
             const removed = new Map();
@@ -32113,6 +32204,15 @@ function getImportPatterns(depName, ecosystem) {
                 `data "${shortName}_`,
                 `provider "${shortName}"`,
             ];
+        }
+        case "composer": {
+            // Convert vendor/package to PascalCase namespace
+            // e.g., "symfony/console" -> "Symfony\\Console"
+            const namespace = depName
+                .split("/")
+                .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+                .join("\\");
+            return [`use ${namespace}\\`, `use ${namespace};`];
         }
         default:
             return [depName];
