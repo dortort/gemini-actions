@@ -4,6 +4,7 @@ export interface PullRequestInfo {
     number: number;
     title: string;
     body: string | null;
+    author: string;
     diff: string;
     files: PullRequestFile[];
     head: {
@@ -60,5 +61,6 @@ export declare function getRepoTree(octokit: Octokit, owner: string, repo: strin
     path: string;
     type: string;
 }[]>;
+export declare function listReleaseNotesBetween(octokit: Octokit, owner: string, repo: string, fromVersion: string, toVersion: string): Promise<string | null>;
 export {};
 //# sourceMappingURL=github.d.ts.map

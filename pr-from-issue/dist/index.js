@@ -31556,6 +31556,7 @@ exports.createOrUpdateFile = createOrUpdateFile;
 exports.createBranch = createBranch;
 exports.getDefaultBranch = getDefaultBranch;
 exports.getRepoTree = getRepoTree;
+exports.listReleaseNotesBetween = listReleaseNotesBetween;
 const github = __importStar(__nccwpck_require__(2146));
 function getOctokitClient(token) {
     return github.getOctokit(token);
@@ -31591,6 +31592,7 @@ async function getPullRequest(octokit, owner, repo, prNumber) {
         number: prResponse.data.number,
         title: prResponse.data.title,
         body: prResponse.data.body,
+        author: prResponse.data.user?.login ?? "",
         diff: diffResponse.data,
         files: filesResponse.data.map((f) => ({
             filename: f.filename,
@@ -31699,6 +31701,38 @@ async function getRepoTree(octokit, owner, repo, sha, recursive = true) {
         type: item.type,
     }));
 }
+async function listReleaseNotesBetween(octokit, owner, repo, fromVersion, toVersion) {
+    try {
+        const { data: releases } = await octokit.rest.repos.listReleases({
+            owner,
+            repo,
+            per_page: 100,
+        });
+        const normalize = (v) => v.replace(/^v/, "");
+        const from = normalize(fromVersion);
+        const to = normalize(toVersion);
+        const relevant = [];
+        let foundTo = false;
+        for (const release of releases) {
+            const tag = normalize(release.tag_name);
+            if (tag === to)
+                foundTo = true;
+            if (foundTo && tag !== from) {
+                if (release.body) {
+                    relevant.push({ tag: release.tag_name, body: release.body });
+                }
+            }
+            if (tag === from)
+                break;
+        }
+        if (relevant.length === 0)
+            return null;
+        return relevant.map((r) => `### ${r.tag}\n${r.body}`).join("\n\n");
+    }
+    catch {
+        return null;
+    }
+}
 //# sourceMappingURL=github.js.map
 
 /***/ }),
@@ -31709,7 +31743,7 @@ async function getRepoTree(octokit, owner, repo, sha, recursive = true) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
+exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
 var gemini_1 = __nccwpck_require__(9700);
 Object.defineProperty(exports, "createGeminiModel", ({ enumerable: true, get: function () { return gemini_1.createGeminiModel; } }));
 Object.defineProperty(exports, "generateContent", ({ enumerable: true, get: function () { return gemini_1.generateContent; } }));
@@ -31728,6 +31762,7 @@ Object.defineProperty(exports, "createOrUpdateFile", ({ enumerable: true, get: f
 Object.defineProperty(exports, "createBranch", ({ enumerable: true, get: function () { return github_1.createBranch; } }));
 Object.defineProperty(exports, "getDefaultBranch", ({ enumerable: true, get: function () { return github_1.getDefaultBranch; } }));
 Object.defineProperty(exports, "getRepoTree", ({ enumerable: true, get: function () { return github_1.getRepoTree; } }));
+Object.defineProperty(exports, "listReleaseNotesBetween", ({ enumerable: true, get: function () { return github_1.listReleaseNotesBetween; } }));
 //# sourceMappingURL=index.js.map
 
 /***/ }),

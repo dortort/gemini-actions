@@ -45,6 +45,7 @@ exports.createOrUpdateFile = createOrUpdateFile;
 exports.createBranch = createBranch;
 exports.getDefaultBranch = getDefaultBranch;
 exports.getRepoTree = getRepoTree;
+exports.listReleaseNotesBetween = listReleaseNotesBetween;
 const github = __importStar(require("@actions/github"));
 function getOctokitClient(token) {
     return github.getOctokit(token);
@@ -80,6 +81,7 @@ async function getPullRequest(octokit, owner, repo, prNumber) {
         number: prResponse.data.number,
         title: prResponse.data.title,
         body: prResponse.data.body,
+        author: prResponse.data.user?.login ?? "",
         diff: diffResponse.data,
         files: filesResponse.data.map((f) => ({
             filename: f.filename,
@@ -187,5 +189,37 @@ async function getRepoTree(octokit, owner, repo, sha, recursive = true) {
         path: item.path,
         type: item.type,
     }));
+}
+async function listReleaseNotesBetween(octokit, owner, repo, fromVersion, toVersion) {
+    try {
+        const { data: releases } = await octokit.rest.repos.listReleases({
+            owner,
+            repo,
+            per_page: 100,
+        });
+        const normalize = (v) => v.replace(/^v/, "");
+        const from = normalize(fromVersion);
+        const to = normalize(toVersion);
+        const relevant = [];
+        let foundTo = false;
+        for (const release of releases) {
+            const tag = normalize(release.tag_name);
+            if (tag === to)
+                foundTo = true;
+            if (foundTo && tag !== from) {
+                if (release.body) {
+                    relevant.push({ tag: release.tag_name, body: release.body });
+                }
+            }
+            if (tag === from)
+                break;
+        }
+        if (relevant.length === 0)
+            return null;
+        return relevant.map((r) => `### ${r.tag}\n${r.body}`).join("\n\n");
+    }
+    catch {
+        return null;
+    }
 }
 //# sourceMappingURL=github.js.map
