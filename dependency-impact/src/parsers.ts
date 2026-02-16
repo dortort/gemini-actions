@@ -33,6 +33,59 @@ export function parseDependencyChanges(diff: string, files: { filename: string; 
       }
     }
 
+    // Parse composer.json changes (Composer)
+    if (file.filename.endsWith("composer.json")) {
+      const removed = new Map<string, string>();
+      const added = new Map<string, string>();
+
+      for (const line of file.patch.split("\n")) {
+        const match = line.match(/^([-+])\s*"([^"]+\/[^"]+)":\s*"[~^]?(\d+[^"]*)"/)
+        if (match) {
+          if (match[1] === "-") removed.set(match[2], match[3]);
+          else added.set(match[2], match[3]);
+        }
+      }
+
+      for (const [name, toVersion] of added) {
+        const fromVersion = removed.get(name);
+        if (fromVersion && fromVersion !== toVersion) {
+          changes.push({ name, fromVersion, toVersion, ecosystem: "composer" });
+        }
+      }
+    }
+
+    // Parse composer.lock changes (Composer)
+    if (file.filename.endsWith("composer.lock")) {
+      const removed = new Map<string, string>();
+      const added = new Map<string, string>();
+      let removedName = "";
+      let addedName = "";
+
+      for (const line of file.patch.split("\n")) {
+        const nameMatch = line.match(/^([-+])\s*"name":\s*"([^"]+)"/);
+        if (nameMatch) {
+          if (nameMatch[1] === "-") removedName = nameMatch[2];
+          else addedName = nameMatch[2];
+        }
+
+        const versionMatch = line.match(/^([-+])\s*"version":\s*"v?(\d+[^"]*)"/);
+        if (versionMatch) {
+          if (versionMatch[1] === "-") {
+            removed.set(removedName, versionMatch[2]);
+          } else {
+            added.set(addedName, versionMatch[2]);
+          }
+        }
+      }
+
+      for (const [name, toVersion] of added) {
+        const fromVersion = removed.get(name);
+        if (fromVersion && fromVersion !== toVersion) {
+          changes.push({ name, fromVersion, toVersion, ecosystem: "composer" });
+        }
+      }
+    }
+
     // Parse requirements.txt changes (Python)
     if (file.filename.endsWith("requirements.txt") || file.filename.endsWith("Pipfile")) {
       const removed = new Map<string, string>();
@@ -132,6 +185,15 @@ export function getImportPatterns(depName: string, ecosystem: string): string[] 
         `data "${shortName}_`,
         `provider "${shortName}"`,
       ];
+    }
+    case "composer": {
+      // Convert vendor/package to PascalCase namespace
+      // e.g., "symfony/console" -> "Symfony\\Console"
+      const namespace = depName
+        .split("/")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join("\\");
+      return [`use ${namespace}\\`, `use ${namespace};`];
     }
     default:
       return [depName];
