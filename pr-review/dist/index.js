@@ -31395,6 +31395,84 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
+/***/ 6941:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getActionContext = getActionContext;
+exports.runAction = runAction;
+const core = __importStar(__nccwpck_require__(6618));
+const gemini_1 = __nccwpck_require__(9700);
+const github_1 = __nccwpck_require__(8284);
+/**
+ * Read the standard action inputs (gemini_api_key, github_token, model)
+ * and return an initialised ActionContext.
+ */
+function getActionContext() {
+    const geminiApiKey = core.getInput("gemini_api_key", { required: true });
+    const githubToken = core.getInput("github_token", { required: true });
+    const modelName = core.getInput("model") || "gemini-2.0-flash";
+    const octokit = (0, github_1.getOctokitClient)(githubToken);
+    const { owner, repo } = (0, github_1.getRepoContext)();
+    const model = (0, gemini_1.createGeminiModel)(geminiApiKey, modelName);
+    return { octokit, owner, repo, model };
+}
+/**
+ * Wrap an action's main logic with consistent error handling.
+ * Catches errors and calls `core.setFailed` so every action doesn't have to.
+ */
+async function runAction(fn) {
+    try {
+        await fn();
+    }
+    catch (error) {
+        if (error instanceof Error) {
+            core.setFailed(error.message);
+        }
+        else {
+            core.setFailed("An unexpected error occurred");
+        }
+    }
+}
+//# sourceMappingURL=action.js.map
+
+/***/ }),
+
 /***/ 9700:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -31438,6 +31516,7 @@ exports.createGeminiModel = createGeminiModel;
 exports.countTokens = countTokens;
 exports.generateContent = generateContent;
 exports.truncateText = truncateText;
+exports.parseJsonResponse = parseJsonResponse;
 const core = __importStar(__nccwpck_require__(6618));
 const generative_ai_1 = __nccwpck_require__(4274);
 const DEFAULT_MODEL = "gemini-2.0-flash";
@@ -31500,6 +31579,12 @@ function truncateText(text, maxChars, label = "content") {
         return text;
     const truncated = text.slice(0, maxChars);
     return `${truncated}\n\n... [${label} truncated: ${(text.length - maxChars).toLocaleString()} characters omitted]`;
+}
+/**
+ * Parse a JSON response from Gemini, stripping markdown code fences if present.
+ */
+function parseJsonResponse(response) {
+    return JSON.parse(response.replace(/```json?\n?|\n?```/g, "").trim());
 }
 //# sourceMappingURL=gemini.js.map
 
@@ -31743,12 +31828,13 @@ async function listReleaseNotesBetween(octokit, owner, repo, fromVersion, toVers
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
+exports.runAction = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
 var gemini_1 = __nccwpck_require__(9700);
 Object.defineProperty(exports, "createGeminiModel", ({ enumerable: true, get: function () { return gemini_1.createGeminiModel; } }));
 Object.defineProperty(exports, "generateContent", ({ enumerable: true, get: function () { return gemini_1.generateContent; } }));
 Object.defineProperty(exports, "countTokens", ({ enumerable: true, get: function () { return gemini_1.countTokens; } }));
 Object.defineProperty(exports, "truncateText", ({ enumerable: true, get: function () { return gemini_1.truncateText; } }));
+Object.defineProperty(exports, "parseJsonResponse", ({ enumerable: true, get: function () { return gemini_1.parseJsonResponse; } }));
 var github_1 = __nccwpck_require__(8284);
 Object.defineProperty(exports, "getOctokitClient", ({ enumerable: true, get: function () { return github_1.getOctokitClient; } }));
 Object.defineProperty(exports, "getRepoContext", ({ enumerable: true, get: function () { return github_1.getRepoContext; } }));
@@ -31763,6 +31849,9 @@ Object.defineProperty(exports, "createBranch", ({ enumerable: true, get: functio
 Object.defineProperty(exports, "getDefaultBranch", ({ enumerable: true, get: function () { return github_1.getDefaultBranch; } }));
 Object.defineProperty(exports, "getRepoTree", ({ enumerable: true, get: function () { return github_1.getRepoTree; } }));
 Object.defineProperty(exports, "listReleaseNotesBetween", ({ enumerable: true, get: function () { return github_1.listReleaseNotesBetween; } }));
+var action_1 = __nccwpck_require__(6941);
+Object.defineProperty(exports, "getActionContext", ({ enumerable: true, get: function () { return action_1.getActionContext; } }));
+Object.defineProperty(exports, "runAction", ({ enumerable: true, get: function () { return action_1.runAction; } }));
 //# sourceMappingURL=index.js.map
 
 /***/ }),
@@ -31813,40 +31902,34 @@ const STRICTNESS_PROMPTS = {
     medium: "Review for bugs, security issues, performance problems, and significant design concerns. Note style issues only if they hurt readability.",
     high: "Perform a thorough review covering bugs, security, performance, design, error handling, edge cases, naming conventions, and code style.",
 };
-async function run() {
-    try {
-        const prNumber = parseInt(core.getInput("pr_number", { required: true }), 10);
-        const strictness = core.getInput("review_strictness") || "medium";
-        const geminiApiKey = core.getInput("gemini_api_key", { required: true });
-        const githubToken = core.getInput("github_token", { required: true });
-        const modelName = core.getInput("model") || "gemini-2.0-flash";
-        if (!STRICTNESS_PROMPTS[strictness]) {
-            throw new Error(`Invalid review_strictness: ${strictness}. Must be low, medium, or high.`);
+(0, shared_1.runAction)(async () => {
+    const prNumber = parseInt(core.getInput("pr_number", { required: true }), 10);
+    const strictness = core.getInput("review_strictness") || "medium";
+    if (!STRICTNESS_PROMPTS[strictness]) {
+        throw new Error(`Invalid review_strictness: ${strictness}. Must be low, medium, or high.`);
+    }
+    const { octokit, owner, repo, model } = (0, shared_1.getActionContext)();
+    core.info(`Reviewing PR #${prNumber} with ${strictness} strictness...`);
+    // 1. Get PR details and diff
+    const pr = await (0, shared_1.getPullRequest)(octokit, owner, repo, prNumber);
+    core.info(`PR: ${pr.title} (${pr.files.length} files changed)`);
+    // 2. Build the review prompt with truncated diffs
+    const maxPatchPerFile = 10000;
+    const maxTotalDiff = 200000;
+    let totalDiffChars = 0;
+    const fileSections = [];
+    for (const f of pr.files) {
+        const patch = f.patch ?? "Binary file or no diff available";
+        const truncatedPatch = (0, shared_1.truncateText)(patch, maxPatchPerFile, `${f.filename} diff`);
+        if (totalDiffChars + truncatedPatch.length > maxTotalDiff) {
+            fileSections.push(`### ${f.filename} (${f.status}: +${f.additions} -${f.deletions})\n` +
+                `*Diff omitted — total diff budget (${(maxTotalDiff / 1000).toFixed(0)}K chars) reached*`);
+            continue;
         }
-        const octokit = (0, shared_1.getOctokitClient)(githubToken);
-        const { owner, repo } = (0, shared_1.getRepoContext)();
-        const model = (0, shared_1.createGeminiModel)(geminiApiKey, modelName);
-        core.info(`Reviewing PR #${prNumber} with ${strictness} strictness...`);
-        // 1. Get PR details and diff
-        const pr = await (0, shared_1.getPullRequest)(octokit, owner, repo, prNumber);
-        core.info(`PR: ${pr.title} (${pr.files.length} files changed)`);
-        // 2. Build the review prompt with truncated diffs
-        const maxPatchPerFile = 10000;
-        const maxTotalDiff = 200000;
-        let totalDiffChars = 0;
-        const fileSections = [];
-        for (const f of pr.files) {
-            const patch = f.patch ?? "Binary file or no diff available";
-            const truncatedPatch = (0, shared_1.truncateText)(patch, maxPatchPerFile, `${f.filename} diff`);
-            if (totalDiffChars + truncatedPatch.length > maxTotalDiff) {
-                fileSections.push(`### ${f.filename} (${f.status}: +${f.additions} -${f.deletions})\n` +
-                    `*Diff omitted — total diff budget (${(maxTotalDiff / 1000).toFixed(0)}K chars) reached*`);
-                continue;
-            }
-            totalDiffChars += truncatedPatch.length;
-            fileSections.push(`### ${f.filename} (${f.status}: +${f.additions} -${f.deletions})\n\`\`\`diff\n${truncatedPatch}\n\`\`\``);
-        }
-        const prompt = `You are an expert code reviewer. Review the following pull request.
+        totalDiffChars += truncatedPatch.length;
+        fileSections.push(`### ${f.filename} (${f.status}: +${f.additions} -${f.deletions})\n\`\`\`diff\n${truncatedPatch}\n\`\`\``);
+    }
+    const prompt = `You are an expert code reviewer. Review the following pull request.
 
 **Review Strictness:** ${strictness}
 ${STRICTNESS_PROMPTS[strictness]}
@@ -31878,56 +31961,46 @@ Guidelines:
 - The summary should give an overall assessment and highlight the most important findings
 
 Respond ONLY with the JSON object.`;
-        const response = await (0, shared_1.generateContent)(model, prompt);
-        let review;
-        try {
-            review = JSON.parse(response.replace(/```json?\n?|\n?```/g, "").trim());
+    const response = await (0, shared_1.generateContent)(model, prompt);
+    let review;
+    try {
+        review = (0, shared_1.parseJsonResponse)(response);
+    }
+    catch {
+        // If parsing fails, post the raw response as a comment
+        core.warning("Could not parse structured review, posting as plain comment");
+        await (0, shared_1.createReview)(octokit, owner, repo, prNumber, `## Gemini Code Review (${strictness} strictness)\n\n${response}`);
+        return;
+    }
+    // 3. Format and post the review
+    const severityEmoji = {
+        critical: "[CRITICAL]",
+        warning: "[WARNING]",
+        suggestion: "[SUGGESTION]",
+        nitpick: "[NITPICK]",
+    };
+    const reviewComments = review.comments
+        .filter((c) => {
+        const fileInPR = pr.files.some((f) => f.filename === c.path);
+        if (!fileInPR) {
+            core.warning(`Skipping comment for ${c.path}: file not in PR diff`);
         }
-        catch {
-            // If parsing fails, post the raw response as a comment
-            core.warning("Could not parse structured review, posting as plain comment");
-            await (0, shared_1.createReview)(octokit, owner, repo, prNumber, `## Gemini Code Review (${strictness} strictness)\n\n${response}`);
-            return;
-        }
-        // 3. Format and post the review
-        const severityEmoji = {
-            critical: "[CRITICAL]",
-            warning: "[WARNING]",
-            suggestion: "[SUGGESTION]",
-            nitpick: "[NITPICK]",
-        };
-        const reviewComments = review.comments
-            .filter((c) => {
-            const fileInPR = pr.files.some((f) => f.filename === c.path);
-            if (!fileInPR) {
-                core.warning(`Skipping comment for ${c.path}: file not in PR diff`);
-            }
-            return fileInPR && c.line > 0;
-        })
-            .map((c) => ({
-            path: c.path,
-            line: c.line,
-            body: `${severityEmoji[c.severity] || ""} ${c.comment}`,
-        }));
-        const summaryBody = `## Gemini Code Review (${strictness} strictness)
+        return fileInPR && c.line > 0;
+    })
+        .map((c) => ({
+        path: c.path,
+        line: c.line,
+        body: `${severityEmoji[c.severity] || ""} ${c.comment}`,
+    }));
+    const summaryBody = `## Gemini Code Review (${strictness} strictness)
 
 ${review.summary}
 
 ---
 *${review.comments.length} comment(s) across ${new Set(review.comments.map((c) => c.path)).size} file(s) — Generated by [gemini-pr-review](https://github.com/dortort/gemini-actions)*`;
-        await (0, shared_1.createReview)(octokit, owner, repo, prNumber, summaryBody, reviewComments);
-        core.info(`Review posted: ${review.comments.length} comments, ${reviewComments.length} inline`);
-    }
-    catch (error) {
-        if (error instanceof Error) {
-            core.setFailed(error.message);
-        }
-        else {
-            core.setFailed("An unexpected error occurred");
-        }
-    }
-}
-run();
+    await (0, shared_1.createReview)(octokit, owner, repo, prNumber, summaryBody, reviewComments);
+    core.info(`Review posted: ${review.comments.length} comments, ${reviewComments.length} inline`);
+});
 
 
 /***/ }),

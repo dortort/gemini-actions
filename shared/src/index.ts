@@ -3,6 +3,7 @@ export {
   generateContent,
   countTokens,
   truncateText,
+  parseJsonResponse,
 } from "./gemini";
 export {
   getOctokitClient,
@@ -25,3 +26,5 @@ export type {
   IssueInfo,
   ReviewComment,
 } from "./github";
+export { getActionContext, runAction } from "./action";
+export type { ActionContext } from "./action";

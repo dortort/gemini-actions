@@ -16,4 +16,8 @@ export declare function generateContent(model: GenerativeModel, prompt: string, 
  * Truncate text to a character budget, appending a notice when truncated.
  */
 export declare function truncateText(text: string, maxChars: number, label?: string): string;
+/**
+ * Parse a JSON response from Gemini, stripping markdown code fences if present.
+ */
+export declare function parseJsonResponse<T>(response: string): T;
 //# sourceMappingURL=gemini.d.ts.map

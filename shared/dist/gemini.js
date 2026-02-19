@@ -37,6 +37,7 @@ exports.createGeminiModel = createGeminiModel;
 exports.countTokens = countTokens;
 exports.generateContent = generateContent;
 exports.truncateText = truncateText;
+exports.parseJsonResponse = parseJsonResponse;
 const core = __importStar(require("@actions/core"));
 const generative_ai_1 = require("@google/generative-ai");
 const DEFAULT_MODEL = "gemini-2.0-flash";
@@ -99,5 +100,11 @@ function truncateText(text, maxChars, label = "content") {
         return text;
     const truncated = text.slice(0, maxChars);
     return `${truncated}\n\n... [${label} truncated: ${(text.length - maxChars).toLocaleString()} characters omitted]`;
+}
+/**
+ * Parse a JSON response from Gemini, stripping markdown code fences if present.
+ */
+function parseJsonResponse(response) {
+    return JSON.parse(response.replace(/```json?\n?|\n?```/g, "").trim());
 }
 //# sourceMappingURL=gemini.js.map

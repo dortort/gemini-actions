@@ -94,3 +94,10 @@ export function truncateText(
   const truncated = text.slice(0, maxChars);
   return `${truncated}\n\n... [${label} truncated: ${(text.length - maxChars).toLocaleString()} characters omitted]`;
 }
+
+/**
+ * Parse a JSON response from Gemini, stripping markdown code fences if present.
+ */
+export function parseJsonResponse<T>(response: string): T {
+  return JSON.parse(response.replace(/```json?\n?|\n?```/g, "").trim()) as T;
+}

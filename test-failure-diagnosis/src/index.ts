@@ -2,83 +2,76 @@ import * as core from "@actions/core";
 import * as fs from "fs";
 import * as path from "path";
 import {
-  createGeminiModel,
   generateContent,
   truncateText,
-  getOctokitClient,
-  getRepoContext,
   getPullRequest,
   getFileContent,
   postComment,
+  runAction,
+  getActionContext,
 } from "@gemini-actions/shared";
 
-async function run(): Promise<void> {
-  try {
-    const prNumber = parseInt(core.getInput("pr_number", { required: true }), 10);
-    const testOutputPath = core.getInput("test_output", { required: true });
-    const geminiApiKey = core.getInput("gemini_api_key", { required: true });
-    const githubToken = core.getInput("github_token", { required: true });
-    const modelName = core.getInput("model") || "gemini-2.0-flash";
+runAction(async () => {
+  const prNumber = parseInt(core.getInput("pr_number", { required: true }), 10);
+  const testOutputPath = core.getInput("test_output", { required: true });
 
-    const octokit = getOctokitClient(githubToken);
-    const { owner, repo } = getRepoContext();
-    const model = createGeminiModel(geminiApiKey, modelName);
+  const { octokit, owner, repo, model } = getActionContext();
 
-    core.info(`Diagnosing test failures for PR #${prNumber}...`);
+  core.info(`Diagnosing test failures for PR #${prNumber}...`);
 
-    // 1. Get PR details and diff
-    const pr = await getPullRequest(octokit, owner, repo, prNumber);
-    core.info(`PR: ${pr.title} (${pr.files.length} files changed)`);
+  // 1. Get PR details and diff
+  const pr = await getPullRequest(octokit, owner, repo, prNumber);
+  core.info(`PR: ${pr.title} (${pr.files.length} files changed)`);
 
-    // 2. Read test output
-    let testOutput: string;
-    const resolvedPath = path.resolve(testOutputPath);
+  // 2. Read test output
+  let testOutput: string;
+  const resolvedPath = path.resolve(testOutputPath);
 
-    if (fs.existsSync(resolvedPath)) {
-      testOutput = fs.readFileSync(resolvedPath, "utf-8");
-      core.info(`Read test output from ${resolvedPath} (${testOutput.length} chars)`);
+  if (fs.existsSync(resolvedPath)) {
+    testOutput = fs.readFileSync(resolvedPath, "utf-8");
+    core.info(`Read test output from ${resolvedPath} (${testOutput.length} chars)`);
+  } else {
+    // Try to find it as a workspace artifact
+    const workspacePath = path.join(
+      process.env.GITHUB_WORKSPACE || ".",
+      testOutputPath,
+    );
+    if (fs.existsSync(workspacePath)) {
+      testOutput = fs.readFileSync(workspacePath, "utf-8");
+      core.info(`Read test output from ${workspacePath}`);
     } else {
-      // Try to find it as a workspace artifact
-      const workspacePath = path.join(
-        process.env.GITHUB_WORKSPACE || ".",
-        testOutputPath,
+      throw new Error(
+        `Test output not found at ${resolvedPath} or ${workspacePath}`,
       );
-      if (fs.existsSync(workspacePath)) {
-        testOutput = fs.readFileSync(workspacePath, "utf-8");
-        core.info(`Read test output from ${workspacePath}`);
-      } else {
-        throw new Error(
-          `Test output not found at ${resolvedPath} or ${workspacePath}`,
-        );
-      }
     }
+  }
 
-    // Truncate very long test output to fit in the prompt
-    testOutput = truncateText(testOutput, 15000, "test output");
+  // Truncate very long test output to fit in the prompt
+  testOutput = truncateText(testOutput, 15000, "test output");
 
-    // 3. Extract failing test file names from the output
-    const testFilePatterns = extractTestFilePaths(testOutput);
-    core.info(`Detected test files in output: ${testFilePatterns.join(", ") || "none"}`);
+  // 3. Extract failing test file names from the output
+  const testFilePatterns = extractTestFilePaths(testOutput);
+  core.info(`Detected test files in output: ${testFilePatterns.join(", ") || "none"}`);
 
-    // 4. Fetch failing test source code (if identifiable)
-    const testSources: Record<string, string> = {};
-    for (const testFile of testFilePatterns.slice(0, 5)) {
-      try {
-        const content = await getFileContent(
-          octokit,
-          owner,
-          repo,
-          testFile,
-          pr.head.ref,
-        );
-        testSources[testFile] = content;
-      } catch {
-        core.debug(`Could not fetch test file: ${testFile}`);
-      }
+  // 4. Fetch failing test source code (if identifiable)
+  const testSources: Record<string, string> = {};
+  for (const testFile of testFilePatterns.slice(0, 5)) {
+    try {
+      const content = await getFileContent(
+        octokit,
+        owner,
+        repo,
+        testFile,
+        pr.head.ref,
+      );
+      testSources[testFile] = content;
+    } catch {
+      core.debug(`Could not fetch test file: ${testFile}`);
     }
+  }
 
-    // 5. Send to Gemini for diagnosis
-    const prompt = `You are a senior software engineer diagnosing test failures on a pull request.
+  // 5. Send to Gemini for diagnosis
+  const prompt = `You are a senior software engineer diagnosing test failures on a pull request.
 
 **PR Title:** ${pr.title}
 **PR Description:** ${pr.body ?? "No description."}
@@ -119,26 +112,19 @@ Provide a diagnosis that includes:
 
 Format your response as clear, structured markdown.`;
 
-    const diagnosis = await generateContent(model, prompt);
+  const diagnosis = await generateContent(model, prompt);
 
-    // 6. Post the diagnosis as a comment
-    const comment = `## Gemini Test Failure Diagnosis
+  // 6. Post the diagnosis as a comment
+  const comment = `## Gemini Test Failure Diagnosis
 
 ${diagnosis}
 
 ---
 *Analyzed ${pr.files.length} changed file(s) and ${testFilePatterns.length} test file(s) — Generated by [gemini-test-failure-diagnosis](https://github.com/dortort/gemini-actions)*`;
 
-    await postComment(octokit, owner, repo, prNumber, comment);
-    core.info("Test failure diagnosis posted");
-  } catch (error) {
-    if (error instanceof Error) {
-      core.setFailed(error.message);
-    } else {
-      core.setFailed("An unexpected error occurred");
-    }
-  }
-}
+  await postComment(octokit, owner, repo, prNumber, comment);
+  core.info("Test failure diagnosis posted");
+});
 
 function extractTestFilePaths(testOutput: string): string[] {
   const paths = new Set<string>();
@@ -167,5 +153,3 @@ function extractTestFilePaths(testOutput: string): string[] {
 
   return [...paths];
 }
-
-run();

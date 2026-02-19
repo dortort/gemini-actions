@@ -1,12 +1,12 @@
 import * as core from "@actions/core";
 import {
-  createGeminiModel,
   generateContent,
   truncateText,
-  getOctokitClient,
-  getRepoContext,
+  parseJsonResponse,
   getPullRequest,
   createReview,
+  runAction,
+  getActionContext,
   ReviewComment,
 } from "@gemini-actions/shared";
 
@@ -29,53 +29,47 @@ const STRICTNESS_PROMPTS: Record<string, string> = {
   high: "Perform a thorough review covering bugs, security, performance, design, error handling, edge cases, naming conventions, and code style.",
 };
 
-async function run(): Promise<void> {
-  try {
-    const prNumber = parseInt(core.getInput("pr_number", { required: true }), 10);
-    const strictness = core.getInput("review_strictness") || "medium";
-    const geminiApiKey = core.getInput("gemini_api_key", { required: true });
-    const githubToken = core.getInput("github_token", { required: true });
-    const modelName = core.getInput("model") || "gemini-2.0-flash";
+runAction(async () => {
+  const prNumber = parseInt(core.getInput("pr_number", { required: true }), 10);
+  const strictness = core.getInput("review_strictness") || "medium";
 
-    if (!STRICTNESS_PROMPTS[strictness]) {
-      throw new Error(
-        `Invalid review_strictness: ${strictness}. Must be low, medium, or high.`,
-      );
-    }
+  if (!STRICTNESS_PROMPTS[strictness]) {
+    throw new Error(
+      `Invalid review_strictness: ${strictness}. Must be low, medium, or high.`,
+    );
+  }
 
-    const octokit = getOctokitClient(githubToken);
-    const { owner, repo } = getRepoContext();
-    const model = createGeminiModel(geminiApiKey, modelName);
+  const { octokit, owner, repo, model } = getActionContext();
 
-    core.info(`Reviewing PR #${prNumber} with ${strictness} strictness...`);
+  core.info(`Reviewing PR #${prNumber} with ${strictness} strictness...`);
 
-    // 1. Get PR details and diff
-    const pr = await getPullRequest(octokit, owner, repo, prNumber);
-    core.info(`PR: ${pr.title} (${pr.files.length} files changed)`);
+  // 1. Get PR details and diff
+  const pr = await getPullRequest(octokit, owner, repo, prNumber);
+  core.info(`PR: ${pr.title} (${pr.files.length} files changed)`);
 
-    // 2. Build the review prompt with truncated diffs
-    const maxPatchPerFile = 10000;
-    const maxTotalDiff = 200000;
+  // 2. Build the review prompt with truncated diffs
+  const maxPatchPerFile = 10000;
+  const maxTotalDiff = 200000;
 
-    let totalDiffChars = 0;
-    const fileSections: string[] = [];
-    for (const f of pr.files) {
-      const patch = f.patch ?? "Binary file or no diff available";
-      const truncatedPatch = truncateText(patch, maxPatchPerFile, `${f.filename} diff`);
-      if (totalDiffChars + truncatedPatch.length > maxTotalDiff) {
-        fileSections.push(
-          `### ${f.filename} (${f.status}: +${f.additions} -${f.deletions})\n` +
-            `*Diff omitted — total diff budget (${(maxTotalDiff / 1000).toFixed(0)}K chars) reached*`,
-        );
-        continue;
-      }
-      totalDiffChars += truncatedPatch.length;
+  let totalDiffChars = 0;
+  const fileSections: string[] = [];
+  for (const f of pr.files) {
+    const patch = f.patch ?? "Binary file or no diff available";
+    const truncatedPatch = truncateText(patch, maxPatchPerFile, `${f.filename} diff`);
+    if (totalDiffChars + truncatedPatch.length > maxTotalDiff) {
       fileSections.push(
-        `### ${f.filename} (${f.status}: +${f.additions} -${f.deletions})\n\`\`\`diff\n${truncatedPatch}\n\`\`\``,
+        `### ${f.filename} (${f.status}: +${f.additions} -${f.deletions})\n` +
+          `*Diff omitted — total diff budget (${(maxTotalDiff / 1000).toFixed(0)}K chars) reached*`,
       );
+      continue;
     }
+    totalDiffChars += truncatedPatch.length;
+    fileSections.push(
+      `### ${f.filename} (${f.status}: +${f.additions} -${f.deletions})\n\`\`\`diff\n${truncatedPatch}\n\`\`\``,
+    );
+  }
 
-    const prompt = `You are an expert code reviewer. Review the following pull request.
+  const prompt = `You are an expert code reviewer. Review the following pull request.
 
 **Review Strictness:** ${strictness}
 ${STRICTNESS_PROMPTS[strictness]}
@@ -108,71 +102,62 @@ Guidelines:
 
 Respond ONLY with the JSON object.`;
 
-    const response = await generateContent(model, prompt);
-    let review: GeminiReview;
-    try {
-      review = JSON.parse(response.replace(/```json?\n?|\n?```/g, "").trim());
-    } catch {
-      // If parsing fails, post the raw response as a comment
-      core.warning("Could not parse structured review, posting as plain comment");
-      await createReview(
-        octokit,
-        owner,
-        repo,
-        prNumber,
-        `## Gemini Code Review (${strictness} strictness)\n\n${response}`,
-      );
-      return;
-    }
+  const response = await generateContent(model, prompt);
+  let review: GeminiReview;
+  try {
+    review = parseJsonResponse<GeminiReview>(response);
+  } catch {
+    // If parsing fails, post the raw response as a comment
+    core.warning("Could not parse structured review, posting as plain comment");
+    await createReview(
+      octokit,
+      owner,
+      repo,
+      prNumber,
+      `## Gemini Code Review (${strictness} strictness)\n\n${response}`,
+    );
+    return;
+  }
 
-    // 3. Format and post the review
-    const severityEmoji: Record<string, string> = {
-      critical: "[CRITICAL]",
-      warning: "[WARNING]",
-      suggestion: "[SUGGESTION]",
-      nitpick: "[NITPICK]",
-    };
+  // 3. Format and post the review
+  const severityEmoji: Record<string, string> = {
+    critical: "[CRITICAL]",
+    warning: "[WARNING]",
+    suggestion: "[SUGGESTION]",
+    nitpick: "[NITPICK]",
+  };
 
-    const reviewComments: ReviewComment[] = review.comments
-      .filter((c) => {
-        const fileInPR = pr.files.some((f) => f.filename === c.path);
-        if (!fileInPR) {
-          core.warning(`Skipping comment for ${c.path}: file not in PR diff`);
-        }
-        return fileInPR && c.line > 0;
-      })
-      .map((c) => ({
-        path: c.path,
-        line: c.line,
-        body: `${severityEmoji[c.severity] || ""} ${c.comment}`,
-      }));
+  const reviewComments: ReviewComment[] = review.comments
+    .filter((c) => {
+      const fileInPR = pr.files.some((f) => f.filename === c.path);
+      if (!fileInPR) {
+        core.warning(`Skipping comment for ${c.path}: file not in PR diff`);
+      }
+      return fileInPR && c.line > 0;
+    })
+    .map((c) => ({
+      path: c.path,
+      line: c.line,
+      body: `${severityEmoji[c.severity] || ""} ${c.comment}`,
+    }));
 
-    const summaryBody = `## Gemini Code Review (${strictness} strictness)
+  const summaryBody = `## Gemini Code Review (${strictness} strictness)
 
 ${review.summary}
 
 ---
 *${review.comments.length} comment(s) across ${new Set(review.comments.map((c) => c.path)).size} file(s) — Generated by [gemini-pr-review](https://github.com/dortort/gemini-actions)*`;
 
-    await createReview(
-      octokit,
-      owner,
-      repo,
-      prNumber,
-      summaryBody,
-      reviewComments,
-    );
+  await createReview(
+    octokit,
+    owner,
+    repo,
+    prNumber,
+    summaryBody,
+    reviewComments,
+  );
 
-    core.info(
-      `Review posted: ${review.comments.length} comments, ${reviewComments.length} inline`,
-    );
-  } catch (error) {
-    if (error instanceof Error) {
-      core.setFailed(error.message);
-    } else {
-      core.setFailed("An unexpected error occurred");
-    }
-  }
-}
-
-run();
+  core.info(
+    `Review posted: ${review.comments.length} comments, ${reviewComments.length} inline`,
+  );
+});

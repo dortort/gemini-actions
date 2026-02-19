@@ -1,12 +1,11 @@
 import * as core from "@actions/core";
 import * as https from "https";
 import {
-  createGeminiModel,
   generateContent,
   truncateText,
-  getOctokitClient,
-  getRepoContext,
   postComment,
+  runAction,
+  getActionContext,
 } from "@gemini-actions/shared";
 
 type ActionType = "open_issue" | "comment_on_pr" | "trigger_workflow";
@@ -96,63 +95,57 @@ async function getMonitor(
   )) as DatadogMonitorResult;
 }
 
-async function run(): Promise<void> {
-  try {
-    const ddApiKey = core.getInput("datadog_api_key", { required: true });
-    const ddAppKey = core.getInput("datadog_app_key", { required: true });
-    const query = core.getInput("query", { required: true });
-    const action = core.getInput("action", { required: true }) as ActionType;
-    const geminiApiKey = core.getInput("gemini_api_key", { required: true });
-    const githubToken = core.getInput("github_token", { required: true });
-    const modelName = core.getInput("model") || "gemini-2.0-flash";
+runAction(async () => {
+  const ddApiKey = core.getInput("datadog_api_key", { required: true });
+  const ddAppKey = core.getInput("datadog_app_key", { required: true });
+  const query = core.getInput("query", { required: true });
+  const action = core.getInput("action", { required: true }) as ActionType;
 
-    const validActions: ActionType[] = [
-      "open_issue",
-      "comment_on_pr",
-      "trigger_workflow",
-    ];
-    if (!validActions.includes(action)) {
-      throw new Error(
-        `Invalid action: ${action}. Must be one of: ${validActions.join(", ")}`,
-      );
-    }
+  const validActions: ActionType[] = [
+    "open_issue",
+    "comment_on_pr",
+    "trigger_workflow",
+  ];
+  if (!validActions.includes(action)) {
+    throw new Error(
+      `Invalid action: ${action}. Must be one of: ${validActions.join(", ")}`,
+    );
+  }
 
-    const octokit = getOctokitClient(githubToken);
-    const { owner, repo } = getRepoContext();
-    const model = createGeminiModel(geminiApiKey, modelName);
+  const { octokit, owner, repo, model } = getActionContext();
 
-    core.info(`Querying Datadog: ${query}`);
+  core.info(`Querying Datadog: ${query}`);
 
-    // 1. Query Datadog - determine if it's a monitor ID or a metrics query
-    let datadogData: string;
-    const isMonitorId = /^\d+$/.test(query.trim());
+  // 1. Query Datadog - determine if it's a monitor ID or a metrics query
+  let datadogData: string;
+  const isMonitorId = /^\d+$/.test(query.trim());
 
-    if (isMonitorId) {
-      const monitor = await getMonitor(ddApiKey, ddAppKey, query.trim());
-      datadogData = JSON.stringify(monitor, null, 2);
-      core.info(`Monitor "${monitor.name}" state: ${monitor.overall_state}`);
-    } else {
-      const metrics = await queryMetrics(ddApiKey, ddAppKey, query);
-      datadogData = JSON.stringify(metrics, null, 2);
-      core.info(`Metrics query returned ${metrics.series?.length ?? 0} series`);
-    }
+  if (isMonitorId) {
+    const monitor = await getMonitor(ddApiKey, ddAppKey, query.trim());
+    datadogData = JSON.stringify(monitor, null, 2);
+    core.info(`Monitor "${monitor.name}" state: ${monitor.overall_state}`);
+  } else {
+    const metrics = await queryMetrics(ddApiKey, ddAppKey, query);
+    datadogData = JSON.stringify(metrics, null, 2);
+    core.info(`Metrics query returned ${metrics.series?.length ?? 0} series`);
+  }
 
-    // 2. Get recent commits for correlation
-    const { data: commits } = await octokit.rest.repos.listCommits({
-      owner,
-      repo,
-      per_page: 10,
-    });
+  // 2. Get recent commits for correlation
+  const { data: commits } = await octokit.rest.repos.listCommits({
+    owner,
+    repo,
+    per_page: 10,
+  });
 
-    const recentCommits = commits.map((c) => ({
-      sha: c.sha.slice(0, 7),
-      message: c.commit.message.split("\n")[0],
-      date: c.commit.author?.date,
-      author: c.commit.author?.name,
-    }));
+  const recentCommits = commits.map((c) => ({
+    sha: c.sha.slice(0, 7),
+    message: c.commit.message.split("\n")[0],
+    date: c.commit.author?.date,
+    author: c.commit.author?.name,
+  }));
 
-    // 3. Ask Gemini to interpret the data
-    const prompt = `You are a site reliability engineer analyzing monitoring data from Datadog in the context of a GitHub repository.
+  // 3. Ask Gemini to interpret the data
+  const prompt = `You are a site reliability engineer analyzing monitoring data from Datadog in the context of a GitHub repository.
 
 **Datadog ${isMonitorId ? "Monitor" : "Metrics"} Data:**
 \`\`\`json
@@ -172,79 +165,70 @@ Analyze the monitoring data and provide:
 
 Format your response as structured markdown suitable for a GitHub ${action === "open_issue" ? "issue body" : "comment"}.`;
 
-    const analysis = await generateContent(model, prompt);
+  const analysis = await generateContent(model, prompt);
 
-    // 4. Take the specified action
-    let resultId: string;
+  // 4. Take the specified action
+  let resultId: string;
 
-    switch (action) {
-      case "open_issue": {
-        const { data: issue } = await octokit.rest.issues.create({
-          owner,
-          repo,
-          title: `[Datadog Alert] ${isMonitorId ? `Monitor ${query}` : "Metrics anomaly detected"}`,
-          body: `## Datadog Alert Analysis\n\n${analysis}\n\n---\n*Generated by [gemini-datadog-responder](https://github.com/dortort/gemini-actions)*`,
-          labels: ["datadog", "automated"],
-        });
-        resultId = issue.number.toString();
-        core.info(`Created issue #${resultId}`);
-        break;
-      }
-
-      case "comment_on_pr": {
-        // Find the most recent open PR
-        const { data: prs } = await octokit.rest.pulls.list({
-          owner,
-          repo,
-          state: "open",
-          sort: "updated",
-          direction: "desc",
-          per_page: 1,
-        });
-
-        if (prs.length === 0) {
-          throw new Error("No open pull requests found to comment on");
-        }
-
-        const prNumber = prs[0].number;
-        await postComment(
-          octokit,
-          owner,
-          repo,
-          prNumber,
-          `## Datadog Alert Analysis\n\n${analysis}\n\n---\n*Generated by [gemini-datadog-responder](https://github.com/dortort/gemini-actions)*`,
-        );
-        resultId = prNumber.toString();
-        core.info(`Commented on PR #${resultId}`);
-        break;
-      }
-
-      case "trigger_workflow": {
-        // Trigger the repository_dispatch event so users can listen for it
-        await octokit.rest.repos.createDispatchEvent({
-          owner,
-          repo,
-          event_type: "datadog-alert",
-          client_payload: {
-            query,
-            analysis,
-            is_monitor: isMonitorId,
-          },
-        });
-        resultId = "dispatch-sent";
-        core.info("Triggered repository_dispatch event: datadog-alert");
-        break;
-      }
+  switch (action) {
+    case "open_issue": {
+      const { data: issue } = await octokit.rest.issues.create({
+        owner,
+        repo,
+        title: `[Datadog Alert] ${isMonitorId ? `Monitor ${query}` : "Metrics anomaly detected"}`,
+        body: `## Datadog Alert Analysis\n\n${analysis}\n\n---\n*Generated by [gemini-datadog-responder](https://github.com/dortort/gemini-actions)*`,
+        labels: ["datadog", "automated"],
+      });
+      resultId = issue.number.toString();
+      core.info(`Created issue #${resultId}`);
+      break;
     }
 
-    core.setOutput("result", resultId);
-  } catch (error) {
-    if (error instanceof Error) {
-      core.setFailed(error.message);
-    } else {
-      core.setFailed("An unexpected error occurred");
+    case "comment_on_pr": {
+      // Find the most recent open PR
+      const { data: prs } = await octokit.rest.pulls.list({
+        owner,
+        repo,
+        state: "open",
+        sort: "updated",
+        direction: "desc",
+        per_page: 1,
+      });
+
+      if (prs.length === 0) {
+        throw new Error("No open pull requests found to comment on");
+      }
+
+      const prNumber = prs[0].number;
+      await postComment(
+        octokit,
+        owner,
+        repo,
+        prNumber,
+        `## Datadog Alert Analysis\n\n${analysis}\n\n---\n*Generated by [gemini-datadog-responder](https://github.com/dortort/gemini-actions)*`,
+      );
+      resultId = prNumber.toString();
+      core.info(`Commented on PR #${resultId}`);
+      break;
+    }
+
+    case "trigger_workflow": {
+      // Trigger the repository_dispatch event so users can listen for it
+      await octokit.rest.repos.createDispatchEvent({
+        owner,
+        repo,
+        event_type: "datadog-alert",
+        client_payload: {
+          query,
+          analysis,
+          is_monitor: isMonitorId,
+        },
+      });
+      resultId = "dispatch-sent";
+      core.info("Triggered repository_dispatch event: datadog-alert");
+      break;
     }
   }
-}
 
-run();
+  core.setOutput("result", resultId);
+});

@@ -31395,6 +31395,84 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
+/***/ 6941:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getActionContext = getActionContext;
+exports.runAction = runAction;
+const core = __importStar(__nccwpck_require__(6618));
+const gemini_1 = __nccwpck_require__(9700);
+const github_1 = __nccwpck_require__(8284);
+/**
+ * Read the standard action inputs (gemini_api_key, github_token, model)
+ * and return an initialised ActionContext.
+ */
+function getActionContext() {
+    const geminiApiKey = core.getInput("gemini_api_key", { required: true });
+    const githubToken = core.getInput("github_token", { required: true });
+    const modelName = core.getInput("model") || "gemini-2.0-flash";
+    const octokit = (0, github_1.getOctokitClient)(githubToken);
+    const { owner, repo } = (0, github_1.getRepoContext)();
+    const model = (0, gemini_1.createGeminiModel)(geminiApiKey, modelName);
+    return { octokit, owner, repo, model };
+}
+/**
+ * Wrap an action's main logic with consistent error handling.
+ * Catches errors and calls `core.setFailed` so every action doesn't have to.
+ */
+async function runAction(fn) {
+    try {
+        await fn();
+    }
+    catch (error) {
+        if (error instanceof Error) {
+            core.setFailed(error.message);
+        }
+        else {
+            core.setFailed("An unexpected error occurred");
+        }
+    }
+}
+//# sourceMappingURL=action.js.map
+
+/***/ }),
+
 /***/ 9700:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -31438,6 +31516,7 @@ exports.createGeminiModel = createGeminiModel;
 exports.countTokens = countTokens;
 exports.generateContent = generateContent;
 exports.truncateText = truncateText;
+exports.parseJsonResponse = parseJsonResponse;
 const core = __importStar(__nccwpck_require__(6618));
 const generative_ai_1 = __nccwpck_require__(4274);
 const DEFAULT_MODEL = "gemini-2.0-flash";
@@ -31500,6 +31579,12 @@ function truncateText(text, maxChars, label = "content") {
         return text;
     const truncated = text.slice(0, maxChars);
     return `${truncated}\n\n... [${label} truncated: ${(text.length - maxChars).toLocaleString()} characters omitted]`;
+}
+/**
+ * Parse a JSON response from Gemini, stripping markdown code fences if present.
+ */
+function parseJsonResponse(response) {
+    return JSON.parse(response.replace(/```json?\n?|\n?```/g, "").trim());
 }
 //# sourceMappingURL=gemini.js.map
 
@@ -31743,12 +31828,13 @@ async function listReleaseNotesBetween(octokit, owner, repo, fromVersion, toVers
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
+exports.runAction = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
 var gemini_1 = __nccwpck_require__(9700);
 Object.defineProperty(exports, "createGeminiModel", ({ enumerable: true, get: function () { return gemini_1.createGeminiModel; } }));
 Object.defineProperty(exports, "generateContent", ({ enumerable: true, get: function () { return gemini_1.generateContent; } }));
 Object.defineProperty(exports, "countTokens", ({ enumerable: true, get: function () { return gemini_1.countTokens; } }));
 Object.defineProperty(exports, "truncateText", ({ enumerable: true, get: function () { return gemini_1.truncateText; } }));
+Object.defineProperty(exports, "parseJsonResponse", ({ enumerable: true, get: function () { return gemini_1.parseJsonResponse; } }));
 var github_1 = __nccwpck_require__(8284);
 Object.defineProperty(exports, "getOctokitClient", ({ enumerable: true, get: function () { return github_1.getOctokitClient; } }));
 Object.defineProperty(exports, "getRepoContext", ({ enumerable: true, get: function () { return github_1.getRepoContext; } }));
@@ -31763,6 +31849,9 @@ Object.defineProperty(exports, "createBranch", ({ enumerable: true, get: functio
 Object.defineProperty(exports, "getDefaultBranch", ({ enumerable: true, get: function () { return github_1.getDefaultBranch; } }));
 Object.defineProperty(exports, "getRepoTree", ({ enumerable: true, get: function () { return github_1.getRepoTree; } }));
 Object.defineProperty(exports, "listReleaseNotesBetween", ({ enumerable: true, get: function () { return github_1.listReleaseNotesBetween; } }));
+var action_1 = __nccwpck_require__(6941);
+Object.defineProperty(exports, "getActionContext", ({ enumerable: true, get: function () { return action_1.getActionContext; } }));
+Object.defineProperty(exports, "runAction", ({ enumerable: true, get: function () { return action_1.runAction; } }));
 //# sourceMappingURL=index.js.map
 
 /***/ }),
@@ -31810,56 +31899,50 @@ const core = __importStar(__nccwpck_require__(6618));
 const fs = __importStar(__nccwpck_require__(9896));
 const path = __importStar(__nccwpck_require__(6928));
 const shared_1 = __nccwpck_require__(7451);
-async function run() {
-    try {
-        const prNumber = parseInt(core.getInput("pr_number", { required: true }), 10);
-        const testOutputPath = core.getInput("test_output", { required: true });
-        const geminiApiKey = core.getInput("gemini_api_key", { required: true });
-        const githubToken = core.getInput("github_token", { required: true });
-        const modelName = core.getInput("model") || "gemini-2.0-flash";
-        const octokit = (0, shared_1.getOctokitClient)(githubToken);
-        const { owner, repo } = (0, shared_1.getRepoContext)();
-        const model = (0, shared_1.createGeminiModel)(geminiApiKey, modelName);
-        core.info(`Diagnosing test failures for PR #${prNumber}...`);
-        // 1. Get PR details and diff
-        const pr = await (0, shared_1.getPullRequest)(octokit, owner, repo, prNumber);
-        core.info(`PR: ${pr.title} (${pr.files.length} files changed)`);
-        // 2. Read test output
-        let testOutput;
-        const resolvedPath = path.resolve(testOutputPath);
-        if (fs.existsSync(resolvedPath)) {
-            testOutput = fs.readFileSync(resolvedPath, "utf-8");
-            core.info(`Read test output from ${resolvedPath} (${testOutput.length} chars)`);
+(0, shared_1.runAction)(async () => {
+    const prNumber = parseInt(core.getInput("pr_number", { required: true }), 10);
+    const testOutputPath = core.getInput("test_output", { required: true });
+    const { octokit, owner, repo, model } = (0, shared_1.getActionContext)();
+    core.info(`Diagnosing test failures for PR #${prNumber}...`);
+    // 1. Get PR details and diff
+    const pr = await (0, shared_1.getPullRequest)(octokit, owner, repo, prNumber);
+    core.info(`PR: ${pr.title} (${pr.files.length} files changed)`);
+    // 2. Read test output
+    let testOutput;
+    const resolvedPath = path.resolve(testOutputPath);
+    if (fs.existsSync(resolvedPath)) {
+        testOutput = fs.readFileSync(resolvedPath, "utf-8");
+        core.info(`Read test output from ${resolvedPath} (${testOutput.length} chars)`);
+    }
+    else {
+        // Try to find it as a workspace artifact
+        const workspacePath = path.join(process.env.GITHUB_WORKSPACE || ".", testOutputPath);
+        if (fs.existsSync(workspacePath)) {
+            testOutput = fs.readFileSync(workspacePath, "utf-8");
+            core.info(`Read test output from ${workspacePath}`);
         }
         else {
-            // Try to find it as a workspace artifact
-            const workspacePath = path.join(process.env.GITHUB_WORKSPACE || ".", testOutputPath);
-            if (fs.existsSync(workspacePath)) {
-                testOutput = fs.readFileSync(workspacePath, "utf-8");
-                core.info(`Read test output from ${workspacePath}`);
-            }
-            else {
-                throw new Error(`Test output not found at ${resolvedPath} or ${workspacePath}`);
-            }
+            throw new Error(`Test output not found at ${resolvedPath} or ${workspacePath}`);
         }
-        // Truncate very long test output to fit in the prompt
-        testOutput = (0, shared_1.truncateText)(testOutput, 15000, "test output");
-        // 3. Extract failing test file names from the output
-        const testFilePatterns = extractTestFilePaths(testOutput);
-        core.info(`Detected test files in output: ${testFilePatterns.join(", ") || "none"}`);
-        // 4. Fetch failing test source code (if identifiable)
-        const testSources = {};
-        for (const testFile of testFilePatterns.slice(0, 5)) {
-            try {
-                const content = await (0, shared_1.getFileContent)(octokit, owner, repo, testFile, pr.head.ref);
-                testSources[testFile] = content;
-            }
-            catch {
-                core.debug(`Could not fetch test file: ${testFile}`);
-            }
+    }
+    // Truncate very long test output to fit in the prompt
+    testOutput = (0, shared_1.truncateText)(testOutput, 15000, "test output");
+    // 3. Extract failing test file names from the output
+    const testFilePatterns = extractTestFilePaths(testOutput);
+    core.info(`Detected test files in output: ${testFilePatterns.join(", ") || "none"}`);
+    // 4. Fetch failing test source code (if identifiable)
+    const testSources = {};
+    for (const testFile of testFilePatterns.slice(0, 5)) {
+        try {
+            const content = await (0, shared_1.getFileContent)(octokit, owner, repo, testFile, pr.head.ref);
+            testSources[testFile] = content;
         }
-        // 5. Send to Gemini for diagnosis
-        const prompt = `You are a senior software engineer diagnosing test failures on a pull request.
+        catch {
+            core.debug(`Could not fetch test file: ${testFile}`);
+        }
+    }
+    // 5. Send to Gemini for diagnosis
+    const prompt = `You are a senior software engineer diagnosing test failures on a pull request.
 
 **PR Title:** ${pr.title}
 **PR Description:** ${pr.body ?? "No description."}
@@ -31867,8 +31950,8 @@ async function run() {
 **PR Diff (changes made):**
 \`\`\`diff
 ${(0, shared_1.truncateText)(pr.files
-            .map((f) => `--- ${f.filename} ---\n${f.patch ?? "(binary or no diff)"}`)
-            .join("\n\n"), 15000, "PR diff")}
+        .map((f) => `--- ${f.filename} ---\n${f.patch ?? "(binary or no diff)"}`)
+        .join("\n\n"), 15000, "PR diff")}
 \`\`\`
 
 **Test Output (failures):**
@@ -31877,11 +31960,11 @@ ${testOutput}
 \`\`\`
 
 ${Object.keys(testSources).length > 0
-            ? `**Failing Test Source Code:**
+        ? `**Failing Test Source Code:**
 ${Object.entries(testSources)
-                .map(([path, content]) => `--- ${path} ---\n\`\`\`\n${(0, shared_1.truncateText)(content, 5000, path)}\n\`\`\``)
-                .join("\n\n")}`
-            : ""}
+            .map(([path, content]) => `--- ${path} ---\n\`\`\`\n${(0, shared_1.truncateText)(content, 5000, path)}\n\`\`\``)
+            .join("\n\n")}`
+        : ""}
 
 Provide a diagnosis that includes:
 
@@ -31890,26 +31973,17 @@ Provide a diagnosis that includes:
 3. **Suggested Fix**: Provide specific, actionable fix suggestions. Include code snippets where helpful. Indicate whether the fix should be in the source code or the tests.
 
 Format your response as clear, structured markdown.`;
-        const diagnosis = await (0, shared_1.generateContent)(model, prompt);
-        // 6. Post the diagnosis as a comment
-        const comment = `## Gemini Test Failure Diagnosis
+    const diagnosis = await (0, shared_1.generateContent)(model, prompt);
+    // 6. Post the diagnosis as a comment
+    const comment = `## Gemini Test Failure Diagnosis
 
 ${diagnosis}
 
 ---
 *Analyzed ${pr.files.length} changed file(s) and ${testFilePatterns.length} test file(s) — Generated by [gemini-test-failure-diagnosis](https://github.com/dortort/gemini-actions)*`;
-        await (0, shared_1.postComment)(octokit, owner, repo, prNumber, comment);
-        core.info("Test failure diagnosis posted");
-    }
-    catch (error) {
-        if (error instanceof Error) {
-            core.setFailed(error.message);
-        }
-        else {
-            core.setFailed("An unexpected error occurred");
-        }
-    }
-}
+    await (0, shared_1.postComment)(octokit, owner, repo, prNumber, comment);
+    core.info("Test failure diagnosis posted");
+});
 function extractTestFilePaths(testOutput) {
     const paths = new Set();
     // Common patterns for test file paths in output
@@ -31934,7 +32008,6 @@ function extractTestFilePaths(testOutput) {
     }
     return [...paths];
 }
-run();
 
 
 /***/ }),

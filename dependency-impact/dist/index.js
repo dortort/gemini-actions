@@ -31395,6 +31395,84 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
+/***/ 6941:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getActionContext = getActionContext;
+exports.runAction = runAction;
+const core = __importStar(__nccwpck_require__(6618));
+const gemini_1 = __nccwpck_require__(9700);
+const github_1 = __nccwpck_require__(8284);
+/**
+ * Read the standard action inputs (gemini_api_key, github_token, model)
+ * and return an initialised ActionContext.
+ */
+function getActionContext() {
+    const geminiApiKey = core.getInput("gemini_api_key", { required: true });
+    const githubToken = core.getInput("github_token", { required: true });
+    const modelName = core.getInput("model") || "gemini-2.0-flash";
+    const octokit = (0, github_1.getOctokitClient)(githubToken);
+    const { owner, repo } = (0, github_1.getRepoContext)();
+    const model = (0, gemini_1.createGeminiModel)(geminiApiKey, modelName);
+    return { octokit, owner, repo, model };
+}
+/**
+ * Wrap an action's main logic with consistent error handling.
+ * Catches errors and calls `core.setFailed` so every action doesn't have to.
+ */
+async function runAction(fn) {
+    try {
+        await fn();
+    }
+    catch (error) {
+        if (error instanceof Error) {
+            core.setFailed(error.message);
+        }
+        else {
+            core.setFailed("An unexpected error occurred");
+        }
+    }
+}
+//# sourceMappingURL=action.js.map
+
+/***/ }),
+
 /***/ 9700:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -31438,6 +31516,7 @@ exports.createGeminiModel = createGeminiModel;
 exports.countTokens = countTokens;
 exports.generateContent = generateContent;
 exports.truncateText = truncateText;
+exports.parseJsonResponse = parseJsonResponse;
 const core = __importStar(__nccwpck_require__(6618));
 const generative_ai_1 = __nccwpck_require__(4274);
 const DEFAULT_MODEL = "gemini-2.0-flash";
@@ -31500,6 +31579,12 @@ function truncateText(text, maxChars, label = "content") {
         return text;
     const truncated = text.slice(0, maxChars);
     return `${truncated}\n\n... [${label} truncated: ${(text.length - maxChars).toLocaleString()} characters omitted]`;
+}
+/**
+ * Parse a JSON response from Gemini, stripping markdown code fences if present.
+ */
+function parseJsonResponse(response) {
+    return JSON.parse(response.replace(/```json?\n?|\n?```/g, "").trim());
 }
 //# sourceMappingURL=gemini.js.map
 
@@ -31743,12 +31828,13 @@ async function listReleaseNotesBetween(octokit, owner, repo, fromVersion, toVers
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
+exports.runAction = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
 var gemini_1 = __nccwpck_require__(9700);
 Object.defineProperty(exports, "createGeminiModel", ({ enumerable: true, get: function () { return gemini_1.createGeminiModel; } }));
 Object.defineProperty(exports, "generateContent", ({ enumerable: true, get: function () { return gemini_1.generateContent; } }));
 Object.defineProperty(exports, "countTokens", ({ enumerable: true, get: function () { return gemini_1.countTokens; } }));
 Object.defineProperty(exports, "truncateText", ({ enumerable: true, get: function () { return gemini_1.truncateText; } }));
+Object.defineProperty(exports, "parseJsonResponse", ({ enumerable: true, get: function () { return gemini_1.parseJsonResponse; } }));
 var github_1 = __nccwpck_require__(8284);
 Object.defineProperty(exports, "getOctokitClient", ({ enumerable: true, get: function () { return github_1.getOctokitClient; } }));
 Object.defineProperty(exports, "getRepoContext", ({ enumerable: true, get: function () { return github_1.getRepoContext; } }));
@@ -31763,6 +31849,9 @@ Object.defineProperty(exports, "createBranch", ({ enumerable: true, get: functio
 Object.defineProperty(exports, "getDefaultBranch", ({ enumerable: true, get: function () { return github_1.getDefaultBranch; } }));
 Object.defineProperty(exports, "getRepoTree", ({ enumerable: true, get: function () { return github_1.getRepoTree; } }));
 Object.defineProperty(exports, "listReleaseNotesBetween", ({ enumerable: true, get: function () { return github_1.listReleaseNotesBetween; } }));
+var action_1 = __nccwpck_require__(6941);
+Object.defineProperty(exports, "getActionContext", ({ enumerable: true, get: function () { return action_1.getActionContext; } }));
+Object.defineProperty(exports, "runAction", ({ enumerable: true, get: function () { return action_1.runAction; } }));
 //# sourceMappingURL=index.js.map
 
 /***/ }),
@@ -31862,101 +31951,95 @@ async function resolveGitHubRepo(dep) {
     }
     return null;
 }
-async function run() {
-    try {
-        const prNumber = parseInt(core.getInput("pr_number", { required: true }), 10);
-        const geminiApiKey = core.getInput("gemini_api_key", { required: true });
-        const githubToken = core.getInput("github_token", { required: true });
-        const modelName = core.getInput("model") || "gemini-2.0-flash";
-        const octokit = (0, shared_1.getOctokitClient)(githubToken);
-        const { owner, repo } = (0, shared_1.getRepoContext)();
-        const model = (0, shared_1.createGeminiModel)(geminiApiKey, modelName);
-        core.info(`Analyzing dependency impact for PR #${prNumber}...`);
-        // 1. Get PR details
-        const pr = await (0, shared_1.getPullRequest)(octokit, owner, repo, prNumber);
-        core.info(`PR: ${pr.title}`);
-        // 2. Parse dependency changes from the diff
-        const depChanges = (0, parsers_1.parseDependencyChanges)(pr.diff, pr.files);
-        if (depChanges.length === 0) {
-            core.info("No dependency version changes detected in this PR");
-            await (0, shared_1.postComment)(octokit, owner, repo, prNumber, "## Gemini Dependency Impact Analysis\n\nNo dependency version changes detected in this PR.");
-            return;
-        }
-        core.info(`Found ${depChanges.length} dependency change(s): ${depChanges.map((d) => d.name).join(", ")}`);
-        // 3. Get repository file tree to find usage
-        const defaultBranch = await (0, shared_1.getDefaultBranch)(octokit, owner, repo);
-        const tree = await (0, shared_1.getRepoTree)(octokit, owner, repo, defaultBranch.sha);
-        const sourceFiles = tree
-            .filter((item) => item.type === "blob")
-            .filter((item) => /\.(ts|js|tsx|jsx|py|go|java|rb|rs|tf|php)$/.test(item.path))
-            .filter((item) => !item.path.includes("node_modules"))
-            .map((item) => item.path);
-        // 4. Sample source files to find usage of changed dependencies
-        const usageContext = {};
-        for (const dep of depChanges) {
-            usageContext[dep.name] = [];
-            const importPatterns = (0, parsers_1.getImportPatterns)(dep.name, dep.ecosystem);
-            // Read a subset of source files to find imports
-            for (const filePath of sourceFiles.slice(0, 100)) {
-                try {
-                    const content = await (0, shared_1.getFileContent)(octokit, owner, repo, filePath, defaultBranch.name);
-                    if (importPatterns.some((pattern) => content.includes(pattern))) {
-                        // Include the relevant lines, not the whole file
-                        const relevantLines = content
-                            .split("\n")
-                            .filter((line) => importPatterns.some((p) => line.includes(p)) ||
-                            line.includes(dep.name))
-                            .slice(0, 20);
-                        if (relevantLines.length > 0) {
-                            usageContext[dep.name].push(`**${filePath}:**\n${relevantLines.join("\n")}`);
-                        }
+(0, shared_1.runAction)(async () => {
+    const prNumber = parseInt(core.getInput("pr_number", { required: true }), 10);
+    const { octokit, owner, repo, model } = (0, shared_1.getActionContext)();
+    core.info(`Analyzing dependency impact for PR #${prNumber}...`);
+    // 1. Get PR details
+    const pr = await (0, shared_1.getPullRequest)(octokit, owner, repo, prNumber);
+    core.info(`PR: ${pr.title}`);
+    // 2. Parse dependency changes from the diff
+    const depChanges = (0, parsers_1.parseDependencyChanges)(pr.diff, pr.files);
+    if (depChanges.length === 0) {
+        core.info("No dependency version changes detected in this PR");
+        await (0, shared_1.postComment)(octokit, owner, repo, prNumber, "## Gemini Dependency Impact Analysis\n\nNo dependency version changes detected in this PR.");
+        return;
+    }
+    core.info(`Found ${depChanges.length} dependency change(s): ${depChanges.map((d) => d.name).join(", ")}`);
+    // 3. Get repository file tree to find usage
+    const defaultBranch = await (0, shared_1.getDefaultBranch)(octokit, owner, repo);
+    const tree = await (0, shared_1.getRepoTree)(octokit, owner, repo, defaultBranch.sha);
+    const sourceFiles = tree
+        .filter((item) => item.type === "blob")
+        .filter((item) => /\.(ts|js|tsx|jsx|py|go|java|rb|rs|tf|php)$/.test(item.path))
+        .filter((item) => !item.path.includes("node_modules"))
+        .map((item) => item.path);
+    // 4. Sample source files to find usage of changed dependencies
+    const usageContext = {};
+    for (const dep of depChanges) {
+        usageContext[dep.name] = [];
+        const importPatterns = (0, parsers_1.getImportPatterns)(dep.name, dep.ecosystem);
+        // Read a subset of source files to find imports
+        for (const filePath of sourceFiles.slice(0, 100)) {
+            try {
+                const content = await (0, shared_1.getFileContent)(octokit, owner, repo, filePath, defaultBranch.name);
+                if (importPatterns.some((pattern) => content.includes(pattern))) {
+                    // Include the relevant lines, not the whole file
+                    const relevantLines = content
+                        .split("\n")
+                        .filter((line) => importPatterns.some((p) => line.includes(p)) ||
+                        line.includes(dep.name))
+                        .slice(0, 20);
+                    if (relevantLines.length > 0) {
+                        usageContext[dep.name].push(`**${filePath}:**\n${relevantLines.join("\n")}`);
                     }
                 }
-                catch {
-                    // Skip files we can't read
+            }
+            catch {
+                // Skip files we can't read
+            }
+        }
+    }
+    // 5. Send to Gemini for analysis
+    const maxUsageCharsPerDep = 5000;
+    const usageSections = Object.entries(usageContext)
+        .map(([name, usages]) => {
+        if (usages.length === 0)
+            return `### ${name}\nNo direct imports found in source files.`;
+        const joined = usages.join("\n\n");
+        return `### ${name}\n${(0, shared_1.truncateText)(joined, maxUsageCharsPerDep, `${name} usage`)}`;
+    })
+        .join("\n\n");
+    const isDependabot = /\[bot\]$/.test(pr.author);
+    const hasBody = pr.body != null && pr.body.trim().length > 50;
+    let releaseNotes = null;
+    if (isDependabot && hasBody) {
+        releaseNotes = pr.body;
+    }
+    else {
+        for (const dep of depChanges) {
+            const ghRepo = await resolveGitHubRepo(dep);
+            if (ghRepo) {
+                const notes = await (0, shared_1.listReleaseNotesBetween)(octokit, ghRepo.owner, ghRepo.repo, dep.fromVersion, dep.toVersion);
+                if (notes) {
+                    releaseNotes = (releaseNotes ?? "") + `\n\n## ${dep.name}\n${notes}`;
                 }
             }
         }
-        // 5. Send to Gemini for analysis
-        const maxUsageCharsPerDep = 5000;
-        const usageSections = Object.entries(usageContext)
-            .map(([name, usages]) => {
-            if (usages.length === 0)
-                return `### ${name}\nNo direct imports found in source files.`;
-            const joined = usages.join("\n\n");
-            return `### ${name}\n${(0, shared_1.truncateText)(joined, maxUsageCharsPerDep, `${name} usage`)}`;
-        })
-            .join("\n\n");
-        const isDependabot = /\[bot\]$/.test(pr.author);
-        const hasBody = pr.body != null && pr.body.trim().length > 50;
-        let releaseNotes = null;
-        if (isDependabot && hasBody) {
+        if (!releaseNotes && hasBody) {
             releaseNotes = pr.body;
         }
-        else {
-            for (const dep of depChanges) {
-                const ghRepo = await resolveGitHubRepo(dep);
-                if (ghRepo) {
-                    const notes = await (0, shared_1.listReleaseNotesBetween)(octokit, ghRepo.owner, ghRepo.repo, dep.fromVersion, dep.toVersion);
-                    if (notes) {
-                        releaseNotes = (releaseNotes ?? "") + `\n\n## ${dep.name}\n${notes}`;
-                    }
-                }
-            }
-            if (!releaseNotes && hasBody) {
-                releaseNotes = pr.body;
-            }
-        }
-        const prBodySection = releaseNotes
-            ? `**Release Notes:**\n${(0, shared_1.truncateText)(releaseNotes.trim(), 15000, "release notes")}`
-            : "**Release Notes:** No release notes available.";
-        const hasUsage = Object.values(usageContext).some(usages => usages.length > 0);
-        const depChangesList = depChanges
-            .map((d) => `- **${d.name}**: ${d.fromVersion} → ${d.toVersion} (${d.ecosystem})`)
-            .join("\n");
-        let prompt;
-        if (hasUsage) {
-            prompt = `You are a dependency upgrade analyst. A pull request updates the following dependencies.
+    }
+    const prBodySection = releaseNotes
+        ? `**Release Notes:**\n${(0, shared_1.truncateText)(releaseNotes.trim(), 15000, "release notes")}`
+        : "**Release Notes:** No release notes available.";
+    const hasUsage = Object.values(usageContext).some(usages => usages.length > 0);
+    const depChangesList = depChanges
+        .map((d) => `- **${d.name}**: ${d.fromVersion} → ${d.toVersion} (${d.ecosystem})`)
+        .join("\n");
+    let prompt;
+    if (hasUsage) {
+        prompt = `You are a dependency upgrade analyst. A pull request updates the following dependencies.
 Cross-reference the release notes with actual usage sites in this codebase.
 
 **Dependency Changes:**
@@ -31981,9 +32064,9 @@ RULES:
 - Do NOT include generic advice like "review the changelog", "test in staging", "run terraform init", or "pin versions".
 - Do NOT fabricate examples, hypothetical scenarios, or breaking changes not confirmed by the release notes.
 - If the release notes do not mention breaking changes relevant to the detected usage, say "No breaking changes detected for current usage" and give a risk assessment.`;
-        }
-        else {
-            prompt = `You are a dependency upgrade analyst. A pull request updates the following dependencies.
+    }
+    else {
+        prompt = `You are a dependency upgrade analyst. A pull request updates the following dependencies.
 No usage of these dependencies was found in the source files.
 
 **Dependency Changes:**
@@ -31999,28 +32082,18 @@ RULES:
 - Do NOT reference files or APIs since no usage was found.
 - Do NOT include generic advice like "review the changelog", "test in staging", or "pin versions".
 - If no release notes are available, say "No release notes available and no usage detected — no action needed." and stop.`;
-        }
-        const analysis = await (0, shared_1.generateContent)(model, prompt);
-        // 6. Post the analysis as a comment
-        const comment = `## Gemini Dependency Impact Analysis
+    }
+    const analysis = await (0, shared_1.generateContent)(model, prompt);
+    // 6. Post the analysis as a comment
+    const comment = `## Gemini Dependency Impact Analysis
 
 ${analysis}
 
 ---
 *${depChanges.length} dependency change(s) · ${Object.values(usageContext).flat().length} usage site(s) found — Generated by [gemini-dependency-impact](https://github.com/dortort/gemini-actions)*`;
-        await (0, shared_1.postComment)(octokit, owner, repo, prNumber, comment);
-        core.info("Dependency impact analysis posted");
-    }
-    catch (error) {
-        if (error instanceof Error) {
-            core.setFailed(error.message);
-        }
-        else {
-            core.setFailed("An unexpected error occurred");
-        }
-    }
-}
-run();
+    await (0, shared_1.postComment)(octokit, owner, repo, prNumber, comment);
+    core.info("Dependency impact analysis posted");
+});
 
 
 /***/ }),
@@ -32033,53 +32106,46 @@ run();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.parseDependencyChanges = parseDependencyChanges;
 exports.getImportPatterns = getImportPatterns;
+/**
+ * Parse diff lines to collect added/removed values, then emit changes where the
+ * version actually changed. This pattern was previously duplicated for every
+ * ecosystem — now it lives in one place.
+ */
+function collectVersionChanges(patch, regex, ecosystem) {
+    const removed = new Map();
+    const added = new Map();
+    for (const line of patch.split("\n")) {
+        const match = line.match(regex);
+        if (match) {
+            if (match[1] === "-")
+                removed.set(match[2], match[3]);
+            else
+                added.set(match[2], match[3]);
+        }
+    }
+    const changes = [];
+    for (const [name, toVersion] of added) {
+        const fromVersion = removed.get(name);
+        if (fromVersion && fromVersion !== toVersion) {
+            changes.push({ name, fromVersion, toVersion, ecosystem });
+        }
+    }
+    return changes;
+}
 function parseDependencyChanges(diff, files) {
     const changes = [];
     for (const file of files) {
         if (!file.patch)
             continue;
-        // Parse package.json changes (npm)
+        // npm: package.json / package-lock.json
         if (file.filename.endsWith("package.json") || file.filename.endsWith("package-lock.json")) {
-            const depRegex = /^[-+]\s*"([^"]+)":\s*"[^]*?(\d+\.\d+\.\d+[^"]*)"/gm;
-            const removed = new Map();
-            const added = new Map();
-            for (const line of file.patch.split("\n")) {
-                const match = line.match(/^([-+])\s*"([^"]+)":\s*"[~^]?(\d+[^"]*)"/);
-                if (match) {
-                    if (match[1] === "-")
-                        removed.set(match[2], match[3]);
-                    else
-                        added.set(match[2], match[3]);
-                }
-            }
-            for (const [name, toVersion] of added) {
-                const fromVersion = removed.get(name);
-                if (fromVersion && fromVersion !== toVersion) {
-                    changes.push({ name, fromVersion, toVersion, ecosystem: "npm" });
-                }
-            }
+            changes.push(...collectVersionChanges(file.patch, /^([-+])\s*"([^"]+)":\s*"[~^]?(\d+[^"]*)"/, "npm"));
         }
-        // Parse composer.json changes (Composer)
+        // Composer: composer.json
         if (file.filename.endsWith("composer.json")) {
-            const removed = new Map();
-            const added = new Map();
-            for (const line of file.patch.split("\n")) {
-                const match = line.match(/^([-+])\s*"([^"]+\/[^"]+)":\s*"[~^]?(\d+[^"]*)"/);
-                if (match) {
-                    if (match[1] === "-")
-                        removed.set(match[2], match[3]);
-                    else
-                        added.set(match[2], match[3]);
-                }
-            }
-            for (const [name, toVersion] of added) {
-                const fromVersion = removed.get(name);
-                if (fromVersion && fromVersion !== toVersion) {
-                    changes.push({ name, fromVersion, toVersion, ecosystem: "composer" });
-                }
-            }
+            changes.push(...collectVersionChanges(file.patch, /^([-+])\s*"([^"]+\/[^"]+)":\s*"[~^]?(\d+[^"]*)"/, "composer"));
         }
-        // Parse composer.lock changes (Composer)
+        // Composer: composer.lock (name and version on separate lines)
         if (file.filename.endsWith("composer.lock")) {
             const removed = new Map();
             const added = new Map();
@@ -32110,58 +32176,24 @@ function parseDependencyChanges(diff, files) {
                 }
             }
         }
-        // Parse requirements.txt changes (Python)
+        // Python: requirements.txt / Pipfile
         if (file.filename.endsWith("requirements.txt") || file.filename.endsWith("Pipfile")) {
-            const removed = new Map();
-            const added = new Map();
-            for (const line of file.patch.split("\n")) {
-                const match = line.match(/^([-+])([a-zA-Z0-9_-]+)[=<>~!]+(\d+\S*)/);
-                if (match) {
-                    if (match[1] === "-")
-                        removed.set(match[2], match[3]);
-                    else
-                        added.set(match[2], match[3]);
-                }
-            }
-            for (const [name, toVersion] of added) {
-                const fromVersion = removed.get(name);
-                if (fromVersion && fromVersion !== toVersion) {
-                    changes.push({ name, fromVersion, toVersion, ecosystem: "pip" });
-                }
-            }
+            changes.push(...collectVersionChanges(file.patch, /^([-+])([a-zA-Z0-9_-]+)[=<>~!]+(\d+\S*)/, "pip"));
         }
-        // Parse go.mod changes (Go)
+        // Go: go.mod
         if (file.filename === "go.mod") {
-            const removed = new Map();
-            const added = new Map();
-            for (const line of file.patch.split("\n")) {
-                const match = line.match(/^([-+])\s*(\S+)\s+v(\S+)/);
-                if (match) {
-                    if (match[1] === "-")
-                        removed.set(match[2], match[3]);
-                    else
-                        added.set(match[2], match[3]);
-                }
-            }
-            for (const [name, toVersion] of added) {
-                const fromVersion = removed.get(name);
-                if (fromVersion && fromVersion !== toVersion) {
-                    changes.push({ name, fromVersion, toVersion, ecosystem: "go" });
-                }
-            }
+            changes.push(...collectVersionChanges(file.patch, /^([-+])\s*(\S+)\s+v(\S+)/, "go"));
         }
-        // Parse .terraform.lock.hcl changes (Terraform)
+        // Terraform: .terraform.lock.hcl (provider + version on separate lines)
         if (file.filename.endsWith(".terraform.lock.hcl")) {
             let currentProvider = "";
             const removed = new Map();
             const added = new Map();
             for (const line of file.patch.split("\n")) {
-                // Track current provider from context, added, or removed lines
                 const providerMatch = line.match(/^[ +-]\s*provider\s+"([^"]+)"/);
                 if (providerMatch) {
                     currentProvider = providerMatch[1];
                 }
-                // Extract pinned version
                 const versionMatch = line.match(/^([-+])\s*version\s*=\s*"(\d+\S*)"/);
                 if (versionMatch && currentProvider) {
                     if (versionMatch[1] === "-")

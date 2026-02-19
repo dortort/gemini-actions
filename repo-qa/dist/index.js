@@ -31395,6 +31395,84 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
+/***/ 6941:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getActionContext = getActionContext;
+exports.runAction = runAction;
+const core = __importStar(__nccwpck_require__(6618));
+const gemini_1 = __nccwpck_require__(9700);
+const github_1 = __nccwpck_require__(8284);
+/**
+ * Read the standard action inputs (gemini_api_key, github_token, model)
+ * and return an initialised ActionContext.
+ */
+function getActionContext() {
+    const geminiApiKey = core.getInput("gemini_api_key", { required: true });
+    const githubToken = core.getInput("github_token", { required: true });
+    const modelName = core.getInput("model") || "gemini-2.0-flash";
+    const octokit = (0, github_1.getOctokitClient)(githubToken);
+    const { owner, repo } = (0, github_1.getRepoContext)();
+    const model = (0, gemini_1.createGeminiModel)(geminiApiKey, modelName);
+    return { octokit, owner, repo, model };
+}
+/**
+ * Wrap an action's main logic with consistent error handling.
+ * Catches errors and calls `core.setFailed` so every action doesn't have to.
+ */
+async function runAction(fn) {
+    try {
+        await fn();
+    }
+    catch (error) {
+        if (error instanceof Error) {
+            core.setFailed(error.message);
+        }
+        else {
+            core.setFailed("An unexpected error occurred");
+        }
+    }
+}
+//# sourceMappingURL=action.js.map
+
+/***/ }),
+
 /***/ 9700:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -31438,6 +31516,7 @@ exports.createGeminiModel = createGeminiModel;
 exports.countTokens = countTokens;
 exports.generateContent = generateContent;
 exports.truncateText = truncateText;
+exports.parseJsonResponse = parseJsonResponse;
 const core = __importStar(__nccwpck_require__(6618));
 const generative_ai_1 = __nccwpck_require__(4274);
 const DEFAULT_MODEL = "gemini-2.0-flash";
@@ -31500,6 +31579,12 @@ function truncateText(text, maxChars, label = "content") {
         return text;
     const truncated = text.slice(0, maxChars);
     return `${truncated}\n\n... [${label} truncated: ${(text.length - maxChars).toLocaleString()} characters omitted]`;
+}
+/**
+ * Parse a JSON response from Gemini, stripping markdown code fences if present.
+ */
+function parseJsonResponse(response) {
+    return JSON.parse(response.replace(/```json?\n?|\n?```/g, "").trim());
 }
 //# sourceMappingURL=gemini.js.map
 
@@ -31743,12 +31828,13 @@ async function listReleaseNotesBetween(octokit, owner, repo, fromVersion, toVers
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
+exports.runAction = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
 var gemini_1 = __nccwpck_require__(9700);
 Object.defineProperty(exports, "createGeminiModel", ({ enumerable: true, get: function () { return gemini_1.createGeminiModel; } }));
 Object.defineProperty(exports, "generateContent", ({ enumerable: true, get: function () { return gemini_1.generateContent; } }));
 Object.defineProperty(exports, "countTokens", ({ enumerable: true, get: function () { return gemini_1.countTokens; } }));
 Object.defineProperty(exports, "truncateText", ({ enumerable: true, get: function () { return gemini_1.truncateText; } }));
+Object.defineProperty(exports, "parseJsonResponse", ({ enumerable: true, get: function () { return gemini_1.parseJsonResponse; } }));
 var github_1 = __nccwpck_require__(8284);
 Object.defineProperty(exports, "getOctokitClient", ({ enumerable: true, get: function () { return github_1.getOctokitClient; } }));
 Object.defineProperty(exports, "getRepoContext", ({ enumerable: true, get: function () { return github_1.getRepoContext; } }));
@@ -31763,6 +31849,9 @@ Object.defineProperty(exports, "createBranch", ({ enumerable: true, get: functio
 Object.defineProperty(exports, "getDefaultBranch", ({ enumerable: true, get: function () { return github_1.getDefaultBranch; } }));
 Object.defineProperty(exports, "getRepoTree", ({ enumerable: true, get: function () { return github_1.getRepoTree; } }));
 Object.defineProperty(exports, "listReleaseNotesBetween", ({ enumerable: true, get: function () { return github_1.listReleaseNotesBetween; } }));
+var action_1 = __nccwpck_require__(6941);
+Object.defineProperty(exports, "getActionContext", ({ enumerable: true, get: function () { return action_1.getActionContext; } }));
+Object.defineProperty(exports, "runAction", ({ enumerable: true, get: function () { return action_1.runAction; } }));
 //# sourceMappingURL=index.js.map
 
 /***/ }),
@@ -31820,60 +31909,54 @@ function matchGlob(filePath, pattern) {
 function matchesAnyGlob(filePath, patterns) {
     return patterns.some((pattern) => matchGlob(filePath, pattern));
 }
-async function run() {
-    try {
-        const issueNumberStr = core.getInput("issue_number");
-        const discussionIdStr = core.getInput("discussion_id");
-        const sourcePaths = core.getInput("source_paths") || "src/**";
-        const geminiApiKey = core.getInput("gemini_api_key", { required: true });
-        const githubToken = core.getInput("github_token", { required: true });
-        const modelName = core.getInput("model") || "gemini-2.0-flash";
-        if (!issueNumberStr && !discussionIdStr) {
-            throw new Error("Either issue_number or discussion_id must be provided");
-        }
-        const octokit = (0, shared_1.getOctokitClient)(githubToken);
-        const { owner, repo } = (0, shared_1.getRepoContext)();
-        const model = (0, shared_1.createGeminiModel)(geminiApiKey, modelName);
-        // 1. Get the question
-        let question;
-        let questionTitle;
-        let responseTarget;
-        if (issueNumberStr) {
-            const issueNumber = parseInt(issueNumberStr, 10);
-            const issue = await (0, shared_1.getIssue)(octokit, owner, repo, issueNumber);
-            questionTitle = issue.title;
-            question = `${issue.title}\n\n${issue.body ?? ""}`;
-            responseTarget = { type: "issue", number: issueNumber };
-            core.info(`Question from issue #${issueNumber}: ${issue.title}`);
-        }
-        else {
-            const discussionId = discussionIdStr;
-            // Fetch discussion via GraphQL
-            const { repository } = await octokit.graphql(`query($owner: String!, $repo: String!, $number: Int!) {
-          repository(owner: $owner, name: $repo) {
-            discussion(number: $number) {
-              title
-              body
-              number
-            }
+(0, shared_1.runAction)(async () => {
+    const issueNumberStr = core.getInput("issue_number");
+    const discussionIdStr = core.getInput("discussion_id");
+    const sourcePaths = core.getInput("source_paths") || "src/**";
+    if (!issueNumberStr && !discussionIdStr) {
+        throw new Error("Either issue_number or discussion_id must be provided");
+    }
+    const { octokit, owner, repo, model } = (0, shared_1.getActionContext)();
+    // 1. Get the question
+    let question;
+    let questionTitle;
+    let responseTarget;
+    if (issueNumberStr) {
+        const issueNumber = parseInt(issueNumberStr, 10);
+        const issue = await (0, shared_1.getIssue)(octokit, owner, repo, issueNumber);
+        questionTitle = issue.title;
+        question = `${issue.title}\n\n${issue.body ?? ""}`;
+        responseTarget = { type: "issue", number: issueNumber };
+        core.info(`Question from issue #${issueNumber}: ${issue.title}`);
+    }
+    else {
+        const discussionId = discussionIdStr;
+        // Fetch discussion via GraphQL
+        const { repository } = await octokit.graphql(`query($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          discussion(number: $number) {
+            title
+            body
+            number
           }
-        }`, { owner, repo, number: parseInt(discussionId, 10) });
-            questionTitle = repository.discussion.title;
-            question = `${repository.discussion.title}\n\n${repository.discussion.body}`;
-            responseTarget = { type: "discussion", id: discussionId };
-            core.info(`Question from discussion #${discussionId}: ${questionTitle}`);
         }
-        // 2. Get repository file tree and filter by source_paths
-        const defaultBranch = await (0, shared_1.getDefaultBranch)(octokit, owner, repo);
-        const tree = await (0, shared_1.getRepoTree)(octokit, owner, repo, defaultBranch.sha);
-        const globs = sourcePaths.split(",").map((s) => s.trim());
-        const sourceFiles = tree
-            .filter((item) => item.type === "blob")
-            .filter((item) => matchesAnyGlob(item.path, globs))
-            .map((item) => item.path);
-        core.info(`Found ${sourceFiles.length} source files matching: ${sourcePaths}`);
-        // 3. Ask Gemini to identify relevant files based on the question
-        const fileSelectionPrompt = `A user asked a question about a codebase. Which files are most likely relevant to answering it?
+      }`, { owner, repo, number: parseInt(discussionId, 10) });
+        questionTitle = repository.discussion.title;
+        question = `${repository.discussion.title}\n\n${repository.discussion.body}`;
+        responseTarget = { type: "discussion", id: discussionId };
+        core.info(`Question from discussion #${discussionId}: ${questionTitle}`);
+    }
+    // 2. Get repository file tree and filter by source_paths
+    const defaultBranch = await (0, shared_1.getDefaultBranch)(octokit, owner, repo);
+    const tree = await (0, shared_1.getRepoTree)(octokit, owner, repo, defaultBranch.sha);
+    const globs = sourcePaths.split(",").map((s) => s.trim());
+    const sourceFiles = tree
+        .filter((item) => item.type === "blob")
+        .filter((item) => matchesAnyGlob(item.path, globs))
+        .map((item) => item.path);
+    core.info(`Found ${sourceFiles.length} source files matching: ${sourcePaths}`);
+    // 3. Ask Gemini to identify relevant files based on the question
+    const fileSelectionPrompt = `A user asked a question about a codebase. Which files are most likely relevant to answering it?
 
 **Question:** ${question}
 
@@ -31882,38 +31965,38 @@ ${sourceFiles.join("\n")}
 
 Return a JSON array of the most relevant file paths (max 20 files). Consider the question topic and select files that would contain the answer.
 Respond ONLY with a JSON array of strings.`;
-        const fileSelectionResponse = await (0, shared_1.generateContent)(model, fileSelectionPrompt);
-        let relevantFiles;
+    const fileSelectionResponse = await (0, shared_1.generateContent)(model, fileSelectionPrompt);
+    let relevantFiles;
+    try {
+        relevantFiles = (0, shared_1.parseJsonResponse)(fileSelectionResponse);
+        // Validate that selected files actually exist in our tree
+        relevantFiles = relevantFiles.filter((f) => sourceFiles.includes(f));
+    }
+    catch {
+        core.warning("Could not parse file selection, using first 15 source files");
+        relevantFiles = sourceFiles.slice(0, 15);
+    }
+    core.info(`Reading ${relevantFiles.length} relevant files...`);
+    // 4. Fetch content of relevant files
+    const fileContents = {};
+    for (const filePath of relevantFiles) {
         try {
-            relevantFiles = JSON.parse(fileSelectionResponse.replace(/```json?\n?|\n?```/g, "").trim());
-            // Validate that selected files actually exist in our tree
-            relevantFiles = relevantFiles.filter((f) => sourceFiles.includes(f));
+            const content = await (0, shared_1.getFileContent)(octokit, owner, repo, filePath, defaultBranch.name);
+            fileContents[filePath] = (0, shared_1.truncateText)(content, 5000, filePath);
         }
         catch {
-            core.warning("Could not parse file selection, using first 15 source files");
-            relevantFiles = sourceFiles.slice(0, 15);
+            core.debug(`Could not read ${filePath}`);
         }
-        core.info(`Reading ${relevantFiles.length} relevant files...`);
-        // 4. Fetch content of relevant files
-        const fileContents = {};
-        for (const filePath of relevantFiles) {
-            try {
-                const content = await (0, shared_1.getFileContent)(octokit, owner, repo, filePath, defaultBranch.name);
-                fileContents[filePath] = (0, shared_1.truncateText)(content, 5000, filePath);
-            }
-            catch {
-                core.debug(`Could not read ${filePath}`);
-            }
-        }
-        // 5. Generate answer
-        const answerPrompt = `You are a knowledgeable assistant for the ${owner}/${repo} repository. A user has asked a question, and you have access to relevant source files. Answer the question with specific references to the code.
+    }
+    // 5. Generate answer
+    const answerPrompt = `You are a knowledgeable assistant for the ${owner}/${repo} repository. A user has asked a question, and you have access to relevant source files. Answer the question with specific references to the code.
 
 **Question:** ${question}
 
 **Source Files:**
 ${Object.entries(fileContents)
-            .map(([path, content]) => `### ${path}\n\`\`\`\n${content}\n\`\`\``)
-            .join("\n\n")}
+        .map(([path, content]) => `### ${path}\n\`\`\`\n${content}\n\`\`\``)
+        .join("\n\n")}
 
 Guidelines:
 - Reference specific files and line numbers when explaining concepts
@@ -31921,48 +32004,38 @@ Guidelines:
 - If the source files don't contain enough information to fully answer the question, say so
 - Structure your answer clearly with headers if needed
 - Be concise but thorough`;
-        const answer = await (0, shared_1.generateContent)(model, answerPrompt);
-        // 6. Post the answer
-        const responseBody = `## Answer
+    const answer = await (0, shared_1.generateContent)(model, answerPrompt);
+    // 6. Post the answer
+    const responseBody = `## Answer
 
 ${answer}
 
 ---
 *Based on ${Object.keys(fileContents).length} source file(s) — Generated by [gemini-repo-qa](https://github.com/dortort/gemini-actions)*`;
-        if (responseTarget.type === "issue") {
-            await (0, shared_1.postComment)(octokit, owner, repo, responseTarget.number, responseBody);
-            core.info(`Answer posted on issue #${responseTarget.number}`);
-        }
-        else {
-            // Post discussion comment via GraphQL
-            // First get the discussion node ID
-            const { repository } = await octokit.graphql(`query($owner: String!, $repo: String!, $number: Int!) {
-          repository(owner: $owner, name: $repo) {
-            discussion(number: $number) {
-              id
-            }
-          }
-        }`, { owner, repo, number: parseInt(responseTarget.id, 10) });
-            await octokit.graphql(`mutation($discussionId: ID!, $body: String!) {
-          addDiscussionComment(input: { discussionId: $discussionId, body: $body }) {
-            comment {
-              id
-            }
-          }
-        }`, { discussionId: repository.discussion.id, body: responseBody });
-            core.info(`Answer posted on discussion #${responseTarget.id}`);
-        }
+    if (responseTarget.type === "issue") {
+        await (0, shared_1.postComment)(octokit, owner, repo, responseTarget.number, responseBody);
+        core.info(`Answer posted on issue #${responseTarget.number}`);
     }
-    catch (error) {
-        if (error instanceof Error) {
-            core.setFailed(error.message);
+    else {
+        // Post discussion comment via GraphQL
+        // First get the discussion node ID
+        const { repository } = await octokit.graphql(`query($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          discussion(number: $number) {
+            id
+          }
         }
-        else {
-            core.setFailed("An unexpected error occurred");
+      }`, { owner, repo, number: parseInt(responseTarget.id, 10) });
+        await octokit.graphql(`mutation($discussionId: ID!, $body: String!) {
+        addDiscussionComment(input: { discussionId: $discussionId, body: $body }) {
+          comment {
+            id
+          }
         }
+      }`, { discussionId: repository.discussion.id, body: responseBody });
+        core.info(`Answer posted on discussion #${responseTarget.id}`);
     }
-}
-run();
+});
 
 
 /***/ }),
