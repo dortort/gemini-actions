@@ -19,3 +19,15 @@ export declare function classifyUpgrade(from: string, to: string): UpgradeType;
  */
 export declare function findDepLineInPatch(patch: string, depName: string): number | null;
 export declare function getImportPatterns(depName: string, ecosystem: string): string[];
+/**
+ * Extract the section of a Dependabot PR body relevant to a specific dependency.
+ *
+ * Dependabot group PRs embed per-dependency release notes inside `<details>`
+ * blocks whose content mentions the package name.  This function returns only
+ * the matching block(s) instead of the full body, avoiding token duplication
+ * when the body is attached to every dependency.
+ *
+ * Falls back to the full body when no per-dep section can be isolated (e.g.
+ * single-dependency Dependabot PRs where the whole body is relevant).
+ */
+export declare function extractDependabotSection(body: string, depName: string): string;

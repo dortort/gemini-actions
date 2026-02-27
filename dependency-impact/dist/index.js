@@ -32005,9 +32005,9 @@ async function resolveGitHubRepo(dep) {
     const hasBody = pr.body != null && pr.body.trim().length > 50;
     const releaseNotesPerDep = new Map();
     if (isDependabot && hasBody) {
-        // Dependabot PRs include release notes in the body — use for all deps
+        // Dependabot PRs embed release notes in the body — extract per-dep sections
         for (const dep of depChanges) {
-            releaseNotesPerDep.set(dep.name, pr.body);
+            releaseNotesPerDep.set(dep.name, (0, parsers_1.extractDependabotSection)(pr.body, dep.name));
         }
     }
     else {
@@ -32141,6 +32141,7 @@ exports.parseDependencyChanges = parseDependencyChanges;
 exports.classifyUpgrade = classifyUpgrade;
 exports.findDepLineInPatch = findDepLineInPatch;
 exports.getImportPatterns = getImportPatterns;
+exports.extractDependabotSection = extractDependabotSection;
 /**
  * Parse diff lines to collect added/removed values, then emit changes where the
  * version actually changed. This pattern was previously duplicated for every
@@ -32329,6 +32330,27 @@ function getImportPatterns(depName, ecosystem) {
         default:
             return [depName];
     }
+}
+/**
+ * Extract the section of a Dependabot PR body relevant to a specific dependency.
+ *
+ * Dependabot group PRs embed per-dependency release notes inside `<details>`
+ * blocks whose content mentions the package name.  This function returns only
+ * the matching block(s) instead of the full body, avoiding token duplication
+ * when the body is attached to every dependency.
+ *
+ * Falls back to the full body when no per-dep section can be isolated (e.g.
+ * single-dependency Dependabot PRs where the whole body is relevant).
+ */
+function extractDependabotSection(body, depName) {
+    // Match all <details>…</details> blocks (non-greedy, case-insensitive tags)
+    const detailsBlocks = body.match(/<details[\s\S]*?<\/details>/gi);
+    if (!detailsBlocks || detailsBlocks.length === 0)
+        return body;
+    const matching = detailsBlocks.filter((block) => block.includes(depName));
+    if (matching.length === 0)
+        return body;
+    return matching.join("\n\n");
 }
 
 

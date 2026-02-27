@@ -234,3 +234,25 @@ export function getImportPatterns(depName: string, ecosystem: string): string[] 
       return [depName];
   }
 }
+
+/**
+ * Extract the section of a Dependabot PR body relevant to a specific dependency.
+ *
+ * Dependabot group PRs embed per-dependency release notes inside `<details>`
+ * blocks whose content mentions the package name.  This function returns only
+ * the matching block(s) instead of the full body, avoiding token duplication
+ * when the body is attached to every dependency.
+ *
+ * Falls back to the full body when no per-dep section can be isolated (e.g.
+ * single-dependency Dependabot PRs where the whole body is relevant).
+ */
+export function extractDependabotSection(body: string, depName: string): string {
+  // Match all <details>…</details> blocks (non-greedy, case-insensitive tags)
+  const detailsBlocks = body.match(/<details[\s\S]*?<\/details>/gi);
+  if (!detailsBlocks || detailsBlocks.length === 0) return body;
+
+  const matching = detailsBlocks.filter((block) => block.includes(depName));
+  if (matching.length === 0) return body;
+
+  return matching.join("\n\n");
+}

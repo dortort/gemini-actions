@@ -13,7 +13,7 @@ import {
   runAction,
   getActionContext,
 } from "@gemini-actions/shared";
-import { parseDependencyChanges, getImportPatterns, classifyUpgrade } from "./parsers";
+import { parseDependencyChanges, getImportPatterns, classifyUpgrade, extractDependabotSection } from "./parsers";
 import type {
   EnrichedDependencyChange,
   Step1Result,
@@ -158,9 +158,9 @@ runAction(async () => {
   const releaseNotesPerDep = new Map<string, string>();
 
   if (isDependabot && hasBody) {
-    // Dependabot PRs include release notes in the body — use for all deps
+    // Dependabot PRs embed release notes in the body — extract per-dep sections
     for (const dep of depChanges) {
-      releaseNotesPerDep.set(dep.name, pr.body!);
+      releaseNotesPerDep.set(dep.name, extractDependabotSection(pr.body!, dep.name));
     }
   } else {
     for (const dep of depChanges) {
