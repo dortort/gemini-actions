@@ -149,6 +149,53 @@ export function parseDependencyChanges(diff: string, files: { filename: string; 
   return changes;
 }
 
+import { UpgradeType } from "./types";
+
+/**
+ * Classify a version change as major, minor, patch, or unknown.
+ */
+export function classifyUpgrade(from: string, to: string): UpgradeType {
+  const parseSemver = (v: string): [number, number, number] | null => {
+    const match = v.match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+    if (!match) return null;
+    return [
+      parseInt(match[1], 10),
+      parseInt(match[2] ?? "0", 10),
+      parseInt(match[3] ?? "0", 10),
+    ];
+  };
+
+  const fromParts = parseSemver(from);
+  const toParts = parseSemver(to);
+  if (!fromParts || !toParts) return "unknown";
+
+  if (toParts[0] !== fromParts[0]) return "major";
+  if (toParts[1] !== fromParts[1]) return "minor";
+  return "patch";
+}
+
+/**
+ * Find the line number in the new file where a dependency's version appears as
+ * an added line in a diff patch. Returns null if not found.
+ */
+export function findDepLineInPatch(patch: string, depName: string): number | null {
+  let lineNum = 0;
+
+  for (const raw of patch.split("\n")) {
+    const hunkMatch = raw.match(/^@@ -\d+(?:,\d+)? \+(\d+)/);
+    if (hunkMatch) {
+      lineNum = parseInt(hunkMatch[1], 10) - 1;
+      continue;
+    }
+    if (raw.startsWith("-")) continue;
+    lineNum++;
+    if (raw.startsWith("+") && raw.includes(depName)) {
+      return lineNum;
+    }
+  }
+  return null;
+}
+
 export function getImportPatterns(depName: string, ecosystem: string): string[] {
   switch (ecosystem) {
     case "npm":

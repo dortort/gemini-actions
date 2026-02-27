@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseDependencyChanges, getImportPatterns } from "./parsers";
+import { parseDependencyChanges, getImportPatterns, classifyUpgrade, findDepLineInPatch } from "./parsers";
 
 describe("parseDependencyChanges", () => {
   describe("terraform", () => {
@@ -403,5 +403,67 @@ describe("getImportPatterns", () => {
 
       expect(patterns).toContain("some-package");
     });
+  });
+});
+
+describe("classifyUpgrade", () => {
+  it("detects major upgrades", () => {
+    expect(classifyUpgrade("1.6.0", "2.0.0")).toBe("major");
+    expect(classifyUpgrade("6.3", "7.0")).toBe("major");
+  });
+
+  it("detects minor upgrades", () => {
+    expect(classifyUpgrade("5.31.0", "5.32.0")).toBe("minor");
+    expect(classifyUpgrade("1.9.0", "1.10.0")).toBe("minor");
+  });
+
+  it("detects patch upgrades", () => {
+    expect(classifyUpgrade("5.31.0", "5.31.1")).toBe("patch");
+    expect(classifyUpgrade("7.5.0", "7.5.3")).toBe("patch");
+  });
+
+  it("returns unknown for non-semver strings", () => {
+    expect(classifyUpgrade("abc", "def")).toBe("unknown");
+  });
+
+  it("handles two-segment versions", () => {
+    expect(classifyUpgrade("1.0", "1.1")).toBe("minor");
+    expect(classifyUpgrade("1.0", "2.0")).toBe("major");
+  });
+});
+
+describe("findDepLineInPatch", () => {
+  it("finds the line number for an added dependency", () => {
+    const patch = [
+      `@@ -10,3 +10,3 @@`,
+      `     "lodash": "^4.17.0",`,
+      `-    "axios": "^1.6.0"`,
+      `+    "axios": "^2.0.0"`,
+    ].join("\n");
+
+    expect(findDepLineInPatch(patch, "axios")).toBe(11);
+  });
+
+  it("returns null when dependency is not in an added line", () => {
+    const patch = [
+      `@@ -10,3 +10,3 @@`,
+      `     "lodash": "^4.17.0",`,
+      `     "axios": "^1.6.0"`,
+    ].join("\n");
+
+    expect(findDepLineInPatch(patch, "axios")).toBeNull();
+  });
+
+  it("handles multiple hunks", () => {
+    const patch = [
+      `@@ -1,3 +1,3 @@`,
+      `     "a": "1.0.0",`,
+      `@@ -20,3 +20,3 @@`,
+      `     "b": "2.0.0",`,
+      `-    "target": "^1.0.0"`,
+      `+    "target": "^2.0.0"`,
+    ].join("\n");
+
+    expect(findDepLineInPatch(patch, "target")).toBe(21);
   });
 });
