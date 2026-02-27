@@ -178,11 +178,11 @@ runAction(async () => {
         }
       }
     }
-    // Fall back to PR body if no GitHub Releases found
-    if (releaseNotesPerDep.size === 0 && hasBody) {
-      for (const dep of depChanges) {
-        releaseNotesPerDep.set(dep.name, pr.body!);
-      }
+    // Fall back to PR body if no GitHub Releases found. Only attach it to the
+    // first dep to avoid duplicating the same content N times in the Step 1
+    // prompt for multi-dep PRs, which inflates token usage unnecessarily.
+    if (releaseNotesPerDep.size === 0 && hasBody && depChanges.length > 0) {
+      releaseNotesPerDep.set(depChanges[0].name, pr.body!);
     }
   }
 
