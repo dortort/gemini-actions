@@ -50,16 +50,16 @@ export function buildStep2Prompt(
   const relevantDeps = step1Result.dependencies.filter(
     (d) =>
       d.hasConfirmedBreakingChanges ||
-      d.deprecations.length > 0 ||
-      d.notableChanges.length > 0,
+      (d.deprecations?.length ?? 0) > 0 ||
+      (d.notableChanges?.length ?? 0) > 0,
   );
 
   const changesSummary = relevantDeps
     .map((d) => {
       const items = [
-        ...d.breakingChanges.map((c) => `  - [BREAKING] ${c}`),
-        ...d.deprecations.map((c) => `  - [DEPRECATED] ${c}`),
-        ...d.notableChanges.map((c) => `  - [CHANGED] ${c}`),
+        ...(d.breakingChanges ?? []).map((c) => `  - [BREAKING] ${c}`),
+        ...(d.deprecations ?? []).map((c) => `  - [DEPRECATED] ${c}`),
+        ...(d.notableChanges ?? []).map((c) => `  - [CHANGED] ${c}`),
       ].join("\n");
       return `### ${d.dependency}\n${items}`;
     })
