@@ -189,6 +189,28 @@ describe("buildInlineComments", () => {
     expect(comments).toHaveLength(0);
   });
 
+  it("does not attach inline comments to non-manifest source files", () => {
+    const filesWithSource: PullRequestFile[] = [
+      {
+        filename: "src/client.ts",
+        status: "modified",
+        additions: 1,
+        deletions: 1,
+        patch: `@@ -1,3 +1,3 @@\n-// uses axios 1.x\n+// uses axios 2.x`,
+      },
+      {
+        filename: "package.json",
+        status: "modified",
+        additions: 1,
+        deletions: 1,
+        patch: `@@ -10,3 +10,3 @@\n-    "axios": "^1.6.0"\n+    "axios": "^2.0.0"`,
+      },
+    ];
+    const comments = buildInlineComments(baseAssessment, enrichedDeps, filesWithSource);
+    expect(comments).toHaveLength(1);
+    expect(comments[0].path).toBe("package.json");
+  });
+
   it("produces one comment per dependency even with multiple files", () => {
     const multiFiles: PullRequestFile[] = [
       {

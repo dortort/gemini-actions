@@ -2,6 +2,13 @@ import type { ReviewComment, PullRequestFile } from "@gemini-actions/shared";
 import { findDepLineInPatch } from "./parsers";
 import type { DependencyAssessment, EnrichedDependencyChange, RiskLevel } from "./types";
 
+const MANIFEST_FILE_RE =
+  /(?:^|\/)(package\.json|package-lock\.json|composer\.json|composer\.lock|requirements\.txt|Pipfile|go\.mod|\.terraform\.lock\.hcl)$/;
+
+function isManifestFile(filename: string): boolean {
+  return MANIFEST_FILE_RE.test(filename);
+}
+
 const riskLabel: Record<RiskLevel, string> = {
   low: "LOW RISK",
   medium: "MEDIUM RISK",
@@ -57,7 +64,7 @@ export function buildInlineComments(
     const dep = enrichedDeps.find((d) => d.name === annotation.dependency);
     if (!dep) continue;
 
-    for (const file of prFiles) {
+    for (const file of prFiles.filter((f) => isManifestFile(f.filename))) {
       if (!file.patch) continue;
       const line = findDepLineInPatch(file.patch, dep.name);
       if (line != null && line > 0) {
