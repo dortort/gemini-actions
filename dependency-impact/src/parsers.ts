@@ -257,7 +257,9 @@ export function extractDependabotSection(body: string, depName: string): string 
   const detailsBlocks = body.match(/<details[\s\S]*?<\/details>/gi);
   if (!detailsBlocks || detailsBlocks.length === 0) return body;
 
-  const matching = detailsBlocks.filter((block) => block.includes(depName));
+  const escaped = depName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const depBoundaryRe = new RegExp(`(?<![\\w./@\\-])${escaped}(?![\\w./@\\-])`);
+  const matching = detailsBlocks.filter((block) => depBoundaryRe.test(block));
   if (matching.length === 0) return body;
 
   return matching.join("\n\n");
