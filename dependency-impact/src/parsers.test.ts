@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseDependencyChanges, getImportPatterns, classifyUpgrade, findDepLineInPatch } from "./parsers";
+import { parseDependencyChanges, getImportPatterns, classifyUpgrade, findDepLineInPatch, extractDependabotSection } from "./parsers";
 
 describe("parseDependencyChanges", () => {
   describe("terraform", () => {
@@ -465,5 +465,66 @@ describe("findDepLineInPatch", () => {
     ].join("\n");
 
     expect(findDepLineInPatch(patch, "target")).toBe(21);
+  });
+});
+
+describe("extractDependabotSection", () => {
+  const groupBody = [
+    "Bumps the deps group with 2 updates.",
+    "",
+    '<details><summary>Release notes for axios</summary>',
+    "<p>Release v2.0.0 - Breaking changes</p>",
+    "</details>",
+    "",
+    '<details><summary>Release notes for lodash</summary>',
+    "<p>v4.17.21 - Security fix</p>",
+    "</details>",
+  ].join("\n");
+
+  it("extracts only the matching details block for a dependency", () => {
+    const section = extractDependabotSection(groupBody, "axios");
+    expect(section).toContain("axios");
+    expect(section).toContain("Release v2.0.0");
+    expect(section).not.toContain("lodash");
+  });
+
+  it("extracts the other dependency independently", () => {
+    const section = extractDependabotSection(groupBody, "lodash");
+    expect(section).toContain("lodash");
+    expect(section).toContain("Security fix");
+    expect(section).not.toContain("axios");
+  });
+
+  it("returns the full body when no details blocks exist", () => {
+    const plain = "Just a simple PR body with no HTML blocks.";
+    expect(extractDependabotSection(plain, "axios")).toBe(plain);
+  });
+
+  it("returns the full body when no details block mentions the dep", () => {
+    const unrelated = [
+      "<details><summary>Notes for react</summary>",
+      "<p>Some react notes</p>",
+      "</details>",
+    ].join("\n");
+    expect(extractDependabotSection(unrelated, "axios")).toBe(unrelated);
+  });
+
+  it("returns multiple matching blocks if dep appears in more than one", () => {
+    const body = [
+      '<details><summary>Release notes for axios</summary>',
+      "<p>Release notes here</p>",
+      "</details>",
+      '<details><summary>Changelog for axios</summary>',
+      "<p>Changelog entries</p>",
+      "</details>",
+      '<details><summary>Commits for lodash</summary>',
+      "<p>Commit list</p>",
+      "</details>",
+    ].join("\n");
+
+    const section = extractDependabotSection(body, "axios");
+    expect(section).toContain("Release notes here");
+    expect(section).toContain("Changelog entries");
+    expect(section).not.toContain("lodash");
   });
 });
