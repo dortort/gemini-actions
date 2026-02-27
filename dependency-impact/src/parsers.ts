@@ -180,6 +180,11 @@ export function classifyUpgrade(from: string, to: string): UpgradeType {
  */
 export function findDepLineInPatch(patch: string, depName: string): number | null {
   let lineNum = 0;
+  const escaped = depName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Require exact word boundary: dep name must not be preceded or followed by
+  // a character that is valid in a package name (alphanumeric, _, ., /, @, -)
+  // so that e.g. "aws" does not match "aws-sdk".
+  const depPattern = new RegExp(`(?<![\\w./@\\-])${escaped}(?![\\w./@\\-])`);
 
   for (const raw of patch.split("\n")) {
     const hunkMatch = raw.match(/^@@ -\d+(?:,\d+)? \+(\d+)/);
@@ -187,9 +192,10 @@ export function findDepLineInPatch(patch: string, depName: string): number | nul
       lineNum = parseInt(hunkMatch[1], 10) - 1;
       continue;
     }
-    if (raw.startsWith("-")) continue;
+    // Skip removed lines and the "\ No newline at end of file" diff marker
+    if (raw.startsWith("-") || raw.startsWith("\\")) continue;
     lineNum++;
-    if (raw.startsWith("+") && raw.includes(depName)) {
+    if (raw.startsWith("+") && depPattern.test(raw)) {
       return lineNum;
     }
   }

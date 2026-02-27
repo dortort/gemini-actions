@@ -466,6 +466,28 @@ describe("findDepLineInPatch", () => {
 
     expect(findDepLineInPatch(patch, "target")).toBe(21);
   });
+
+  it("does not match a dep name that is a prefix of another dep name", () => {
+    const patch = [
+      `@@ -10,3 +10,3 @@`,
+      `-    "aws-sdk": "^2.0.0"`,
+      `+    "aws-sdk": "^3.0.0"`,
+    ].join("\n");
+
+    expect(findDepLineInPatch(patch, "aws")).toBeNull();
+  });
+
+  it("skips the no-newline-at-end-of-file marker when counting lines", () => {
+    const patch = [
+      `@@ -10,3 +10,3 @@`,
+      `     "lodash": "^4.17.0",`,
+      `-    "axios": "^1.6.0"`,
+      `\\ No newline at end of file`,
+      `+    "axios": "^2.0.0"`,
+    ].join("\n");
+
+    expect(findDepLineInPatch(patch, "axios")).toBe(11);
+  });
 });
 
 describe("extractDependabotSection", () => {
