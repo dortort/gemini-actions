@@ -223,8 +223,8 @@ runAction(async () => {
   const hasBreakingChanges = step1Result.dependencies.some(
     (d) =>
       d.hasConfirmedBreakingChanges ||
-      d.deprecations.length > 0 ||
-      d.notableChanges.length > 0,
+      (d.deprecations?.length ?? 0) > 0 ||
+      (d.notableChanges?.length ?? 0) > 0,
   );
 
   let step2Result: Step2Result = { impacts: [], unaffectedUsages: [] };
@@ -260,8 +260,16 @@ runAction(async () => {
   }
 
   // 10. Post the analysis as a review with inline comments
-  const body = buildReviewBody(assessment);
-  const inlineComments = buildInlineComments(assessment, enrichedDeps, pr.files);
+  let body: string;
+  let inlineComments: ReturnType<typeof buildInlineComments>;
+  try {
+    body = buildReviewBody(assessment);
+    inlineComments = buildInlineComments(assessment, enrichedDeps, pr.files);
+  } catch (err) {
+    core.warning(`Review rendering failed (${err instanceof Error ? err.message : err}), falling back to legacy prompt`);
+    await runLegacyFallback(enrichedDeps, usageSections, hasUsage, pr.diff);
+    return;
+  }
 
   if (inlineComments.length > 0) {
     await createReview(octokit, owner, repo, prNumber, body, inlineComments);
