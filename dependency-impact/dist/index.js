@@ -32020,7 +32020,7 @@ async function resolveGitHubRepo(dep) {
                 }
             }
         }
-        // Fall back to PR body if no GitHub Releases found
+        // Fall back to PR body if no GitHub Releases found.
         if (releaseNotesPerDep.size === 0 && hasBody) {
             for (const dep of depChanges) {
                 releaseNotesPerDep.set(dep.name, pr.body);
@@ -32058,8 +32058,8 @@ async function resolveGitHubRepo(dep) {
     }
     // 8. Step 2: Cross-reference with codebase usage (conditional)
     const hasBreakingChanges = step1Result.dependencies.some((d) => d.hasConfirmedBreakingChanges ||
-        d.deprecations.length > 0 ||
-        d.notableChanges.length > 0);
+        (d.deprecations?.length ?? 0) > 0 ||
+        (d.notableChanges?.length ?? 0) > 0);
     let step2Result = { impacts: [], unaffectedUsages: [] };
     if (hasUsage && hasBreakingChanges) {
         core.info("Step 2: Cross-referencing breaking changes with codebase usage...");
@@ -32092,8 +32092,17 @@ async function resolveGitHubRepo(dep) {
         return;
     }
     // 10. Post the analysis as a review with inline comments
-    const body = (0, review_1.buildReviewBody)(assessment);
-    const inlineComments = (0, review_1.buildInlineComments)(assessment, enrichedDeps, pr.files);
+    let body;
+    let inlineComments;
+    try {
+        body = (0, review_1.buildReviewBody)(assessment);
+        inlineComments = (0, review_1.buildInlineComments)(assessment, enrichedDeps, pr.files);
+    }
+    catch (err) {
+        core.warning(`Review rendering failed (${err instanceof Error ? err.message : err}), falling back to legacy prompt`);
+        await runLegacyFallback(enrichedDeps, usageSections, hasUsage, pr.diff);
+        return;
+    }
     if (inlineComments.length > 0) {
         await (0, shared_1.createReview)(octokit, owner, repo, prNumber, body, inlineComments);
     }
@@ -32278,16 +32287,22 @@ function classifyUpgrade(from, to) {
  */
 function findDepLineInPatch(patch, depName) {
     let lineNum = 0;
+    const escaped = depName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Require exact word boundary: dep name must not be preceded or followed by
+    // a character that is valid in a package name (alphanumeric, _, ., /, @, -)
+    // so that e.g. "aws" does not match "aws-sdk".
+    const depPattern = new RegExp(`(?<![\\w./@\\-])${escaped}(?![\\w./@\\-])`);
     for (const raw of patch.split("\n")) {
         const hunkMatch = raw.match(/^@@ -\d+(?:,\d+)? \+(\d+)/);
         if (hunkMatch) {
             lineNum = parseInt(hunkMatch[1], 10) - 1;
             continue;
         }
-        if (raw.startsWith("-"))
+        // Skip removed lines and the "\ No newline at end of file" diff marker
+        if (raw.startsWith("-") || raw.startsWith("\\"))
             continue;
         lineNum++;
-        if (raw.startsWith("+") && raw.includes(depName)) {
+        if (raw.startsWith("+") && depPattern.test(raw)) {
             return lineNum;
         }
     }
@@ -32347,7 +32362,9 @@ function extractDependabotSection(body, depName) {
     const detailsBlocks = body.match(/<details[\s\S]*?<\/details>/gi);
     if (!detailsBlocks || detailsBlocks.length === 0)
         return body;
-    const matching = detailsBlocks.filter((block) => block.includes(depName));
+    const escaped = depName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const depBoundaryRe = new RegExp(`(?<![\\w./@\\-])${escaped}(?![\\w./@\\-])`);
+    const matching = detailsBlocks.filter((block) => depBoundaryRe.test(block));
     if (matching.length === 0)
         return body;
     return matching.join("\n\n");
@@ -32409,14 +32426,14 @@ Respond ONLY with the JSON object.`;
 }
 function buildStep2Prompt(step1Result, usageSections) {
     const relevantDeps = step1Result.dependencies.filter((d) => d.hasConfirmedBreakingChanges ||
-        d.deprecations.length > 0 ||
-        d.notableChanges.length > 0);
+        (d.deprecations?.length ?? 0) > 0 ||
+        (d.notableChanges?.length ?? 0) > 0);
     const changesSummary = relevantDeps
         .map((d) => {
         const items = [
-            ...d.breakingChanges.map((c) => `  - [BREAKING] ${c}`),
-            ...d.deprecations.map((c) => `  - [DEPRECATED] ${c}`),
-            ...d.notableChanges.map((c) => `  - [CHANGED] ${c}`),
+            ...(d.breakingChanges ?? []).map((c) => `  - [BREAKING] ${c}`),
+            ...(d.deprecations ?? []).map((c) => `  - [DEPRECATED] ${c}`),
+            ...(d.notableChanges ?? []).map((c) => `  - [CHANGED] ${c}`),
         ].join("\n");
         return `### ${d.dependency}\n${items}`;
     })
@@ -32624,6 +32641,10 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.buildReviewBody = buildReviewBody;
 exports.buildInlineComments = buildInlineComments;
 const parsers_1 = __nccwpck_require__(2149);
+const MANIFEST_FILE_RE = /(?:^|\/)(package\.json|package-lock\.json|composer\.json|composer\.lock|requirements\.txt|Pipfile|go\.mod|\.terraform\.lock\.hcl)$/;
+function isManifestFile(filename) {
+    return MANIFEST_FILE_RE.test(filename);
+}
 const riskLabel = {
     low: "LOW RISK",
     medium: "MEDIUM RISK",
@@ -32666,7 +32687,7 @@ function buildInlineComments(assessment, enrichedDeps, prFiles) {
         const dep = enrichedDeps.find((d) => d.name === annotation.dependency);
         if (!dep)
             continue;
-        for (const file of prFiles) {
+        for (const file of prFiles.filter((f) => isManifestFile(f.filename))) {
             if (!file.patch)
                 continue;
             const line = (0, parsers_1.findDepLineInPatch)(file.patch, dep.name);
