@@ -31960,8 +31960,20 @@ async function resolveGitHubRepo(dep) {
     // 1. Get PR details
     const pr = await (0, shared_1.getPullRequest)(octokit, owner, repo, prNumber);
     core.info(`PR: ${pr.title}`);
-    // 2. Parse dependency changes from the diff
-    const depChanges = (0, parsers_1.parseDependencyChanges)(pr.diff, pr.files);
+    // 2. Parse dependency changes from the diff, deduplicating by name::ecosystem.
+    // The same package can appear in multiple manifests in a monorepo; analysis
+    // and release-note lookups are per-package identity, so we keep only the
+    // first occurrence and let findDepLineInPatch locate the right line per file.
+    const depChanges = (() => {
+        const seen = new Set();
+        return (0, parsers_1.parseDependencyChanges)(pr.diff, pr.files).filter((dep) => {
+            const key = `${dep.name}::${dep.ecosystem}`;
+            if (seen.has(key))
+                return false;
+            seen.add(key);
+            return true;
+        });
+    })();
     if (depChanges.length === 0) {
         core.info("No dependency version changes detected in this PR");
         await (0, shared_1.postComment)(octokit, owner, repo, prNumber, "## Gemini Dependency Impact Analysis\n\nNo dependency version changes detected in this PR.");
