@@ -247,8 +247,11 @@ runAction(async () => {
     core.info("Step 2: Cross-referencing breaking changes with codebase usage...");
     try {
       const step2Response = await generateContent(model, buildStep2Prompt(step1Result, usageSections), 300_000);
-      step2Result = parseJsonResponse<Step2Result>(step2Response);
-      core.info(`Step 2 complete: ${step2Result.impacts.length} impact(s) found`);
+      const parsed = parseJsonResponse<Step2Result>(step2Response);
+      core.info(`Step 2 complete: ${parsed.impacts.length} impact(s) found`);
+      // Assign only after all field accesses succeed so a malformed response
+      // does not overwrite the safe default before the catch block runs.
+      step2Result = parsed;
     } catch (err) {
       core.warning(`Step 2 failed (${err instanceof Error ? err.message : err}), proceeding with empty impact analysis`);
     }
