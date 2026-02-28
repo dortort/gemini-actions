@@ -32080,8 +32080,11 @@ async function resolveGitHubRepo(dep) {
         core.info("Step 2: Cross-referencing breaking changes with codebase usage...");
         try {
             const step2Response = await (0, shared_1.generateContent)(model, (0, prompts_1.buildStep2Prompt)(step1Result, usageSections), 300_000);
-            step2Result = (0, shared_1.parseJsonResponse)(step2Response);
-            core.info(`Step 2 complete: ${step2Result.impacts.length} impact(s) found`);
+            const parsed = (0, shared_1.parseJsonResponse)(step2Response);
+            core.info(`Step 2 complete: ${parsed.impacts.length} impact(s) found`);
+            // Assign only after all field accesses succeed so a malformed response
+            // does not overwrite the safe default before the catch block runs.
+            step2Result = parsed;
         }
         catch (err) {
             core.warning(`Step 2 failed (${err instanceof Error ? err.message : err}), proceeding with empty impact analysis`);
@@ -32291,6 +32294,10 @@ function classifyUpgrade(from, to) {
     if (!fromParts || !toParts)
         return "unknown";
     if (toParts[0] !== fromParts[0])
+        return "major";
+    // In 0.x packages, minor bumps carry the same breaking-change risk as a
+    // major bump (semver allows breaking changes throughout 0.y.z).
+    if (fromParts[0] === 0 && toParts[1] !== fromParts[1])
         return "major";
     if (toParts[1] !== fromParts[1])
         return "minor";
