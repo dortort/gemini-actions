@@ -170,6 +170,9 @@ export function classifyUpgrade(from: string, to: string): UpgradeType {
   if (!fromParts || !toParts) return "unknown";
 
   if (toParts[0] !== fromParts[0]) return "major";
+  // In 0.x packages, minor bumps carry the same breaking-change risk as a
+  // major bump (semver allows breaking changes throughout 0.y.z).
+  if (fromParts[0] === 0 && toParts[1] !== fromParts[1]) return "major";
   if (toParts[1] !== fromParts[1]) return "minor";
   return "patch";
 }

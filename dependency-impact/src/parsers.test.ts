@@ -426,6 +426,15 @@ describe("classifyUpgrade", () => {
     expect(classifyUpgrade("abc", "def")).toBe("unknown");
   });
 
+  it("treats 0.x minor bumps as major", () => {
+    expect(classifyUpgrade("0.4.0", "0.5.0")).toBe("major");
+    expect(classifyUpgrade("0.1.0", "0.2.0")).toBe("major");
+  });
+
+  it("treats 0.x patch bumps as patch", () => {
+    expect(classifyUpgrade("0.4.0", "0.4.1")).toBe("patch");
+  });
+
   it("handles two-segment versions", () => {
     expect(classifyUpgrade("1.0", "1.1")).toBe("minor");
     expect(classifyUpgrade("1.0", "2.0")).toBe("major");
