@@ -155,12 +155,15 @@ runAction(async () => {
   // 5. Fetch release notes
   const isDependabot = /\[bot\]$/.test(pr.author);
   const hasBody = pr.body != null && pr.body.trim().length > 50;
+  // Keyed by "name::ecosystem" to avoid collisions when a PR updates packages
+  // with the same name across different ecosystems (e.g. a monorepo).
   const releaseNotesPerDep = new Map<string, string>();
+  const depNoteKey = (d: { name: string; ecosystem: string }) => `${d.name}::${d.ecosystem}`;
 
   if (isDependabot && hasBody) {
     // Dependabot PRs embed release notes in the body — extract per-dep sections
     for (const dep of depChanges) {
-      releaseNotesPerDep.set(dep.name, extractDependabotSection(pr.body!, dep.name));
+      releaseNotesPerDep.set(depNoteKey(dep), extractDependabotSection(pr.body!, dep.name));
     }
   } else {
     for (const dep of depChanges) {
@@ -174,14 +177,14 @@ runAction(async () => {
           dep.toVersion,
         );
         if (notes) {
-          releaseNotesPerDep.set(dep.name, notes);
+          releaseNotesPerDep.set(depNoteKey(dep), notes);
         }
       }
     }
     // Fall back to PR body if no GitHub Releases found.
     if (releaseNotesPerDep.size === 0 && hasBody) {
       for (const dep of depChanges) {
-        releaseNotesPerDep.set(dep.name, pr.body!);
+        releaseNotesPerDep.set(depNoteKey(dep), pr.body!);
       }
     }
   }
@@ -190,7 +193,7 @@ runAction(async () => {
   const enrichedDeps: EnrichedDependencyChange[] = depChanges.map((dep) => ({
     ...dep,
     upgradeType: classifyUpgrade(dep.fromVersion, dep.toVersion),
-    releaseNotes: releaseNotesPerDep.get(dep.name) ?? null,
+    releaseNotes: releaseNotesPerDep.get(depNoteKey(dep)) ?? null,
   }));
 
   const maxUsageCharsPerDep = 5000;
