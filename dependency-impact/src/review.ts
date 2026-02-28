@@ -17,6 +17,15 @@ const riskLabel: Record<RiskLevel, string> = {
 };
 
 /**
+ * Normalize an LLM-returned risk value to a display label, guarding against
+ * case variations (e.g. "Low" vs "low") that parseJsonResponse won't catch.
+ */
+function safeRiskLabel(risk: unknown): string {
+  const normalized = typeof risk === "string" ? (risk.toLowerCase() as RiskLevel) : undefined;
+  return (normalized && riskLabel[normalized]) ?? String(risk).toUpperCase();
+}
+
+/**
  * Build the review body with a summary table and narrative.
  */
 export function buildReviewBody(assessment: DependencyAssessment): string {
@@ -24,7 +33,7 @@ export function buildReviewBody(assessment: DependencyAssessment): string {
   const tableRows = assessment.dependencySummaries
     .map(
       (d) =>
-        `| ${d.dependency} | ${d.fromVersion} → ${d.toVersion} | ${d.upgradeType} | **${riskLabel[d.risk]}** | ${d.oneLiner} |`,
+        `| ${d.dependency} | ${d.fromVersion} → ${d.toVersion} | ${d.upgradeType} | **${safeRiskLabel(d.risk)}** | ${d.oneLiner} |`,
     )
     .join("\n");
 
@@ -35,7 +44,7 @@ export function buildReviewBody(assessment: DependencyAssessment): string {
 
   return `## Gemini Dependency Impact Analysis
 
-**${riskLabel[assessment.overallRisk]}** — ${assessment.riskJustification}
+**${safeRiskLabel(assessment.overallRisk)}** — ${assessment.riskJustification}
 
 ### Summary
 
