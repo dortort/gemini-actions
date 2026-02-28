@@ -32003,11 +32003,14 @@ async function resolveGitHubRepo(dep) {
     // 5. Fetch release notes
     const isDependabot = /\[bot\]$/.test(pr.author);
     const hasBody = pr.body != null && pr.body.trim().length > 50;
+    // Keyed by "name::ecosystem" to avoid collisions when a PR updates packages
+    // with the same name across different ecosystems (e.g. a monorepo).
     const releaseNotesPerDep = new Map();
+    const depNoteKey = (d) => `${d.name}::${d.ecosystem}`;
     if (isDependabot && hasBody) {
         // Dependabot PRs embed release notes in the body — extract per-dep sections
         for (const dep of depChanges) {
-            releaseNotesPerDep.set(dep.name, (0, parsers_1.extractDependabotSection)(pr.body, dep.name));
+            releaseNotesPerDep.set(depNoteKey(dep), (0, parsers_1.extractDependabotSection)(pr.body, dep.name));
         }
     }
     else {
@@ -32016,14 +32019,14 @@ async function resolveGitHubRepo(dep) {
             if (ghRepo) {
                 const notes = await (0, shared_1.listReleaseNotesBetween)(octokit, ghRepo.owner, ghRepo.repo, dep.fromVersion, dep.toVersion);
                 if (notes) {
-                    releaseNotesPerDep.set(dep.name, notes);
+                    releaseNotesPerDep.set(depNoteKey(dep), notes);
                 }
             }
         }
         // Fall back to PR body if no GitHub Releases found.
         if (releaseNotesPerDep.size === 0 && hasBody) {
             for (const dep of depChanges) {
-                releaseNotesPerDep.set(dep.name, pr.body);
+                releaseNotesPerDep.set(depNoteKey(dep), pr.body);
             }
         }
     }
@@ -32031,7 +32034,7 @@ async function resolveGitHubRepo(dep) {
     const enrichedDeps = depChanges.map((dep) => ({
         ...dep,
         upgradeType: (0, parsers_1.classifyUpgrade)(dep.fromVersion, dep.toVersion),
-        releaseNotes: releaseNotesPerDep.get(dep.name) ?? null,
+        releaseNotes: releaseNotesPerDep.get(depNoteKey(dep)) ?? null,
     }));
     const maxUsageCharsPerDep = 5000;
     const usageSections = Object.entries(usageContext)
@@ -32652,19 +32655,27 @@ const riskLabel = {
     critical: "CRITICAL RISK",
 };
 /**
+ * Normalize an LLM-returned risk value to a display label, guarding against
+ * case variations (e.g. "Low" vs "low") that parseJsonResponse won't catch.
+ */
+function safeRiskLabel(risk) {
+    const normalized = typeof risk === "string" ? risk.toLowerCase() : undefined;
+    return (normalized && riskLabel[normalized]) ?? String(risk).toUpperCase();
+}
+/**
  * Build the review body with a summary table and narrative.
  */
 function buildReviewBody(assessment) {
     const tableHeader = "| Dependency | Version | Type | Risk | Summary |\n|---|---|---|---|---|";
     const tableRows = assessment.dependencySummaries
-        .map((d) => `| ${d.dependency} | ${d.fromVersion} → ${d.toVersion} | ${d.upgradeType} | **${riskLabel[d.risk]}** | ${d.oneLiner} |`)
+        .map((d) => `| ${d.dependency} | ${d.fromVersion} → ${d.toVersion} | ${d.upgradeType} | **${safeRiskLabel(d.risk)}** | ${d.oneLiner} |`)
         .join("\n");
     const actionSection = assessment.actionItems.length > 0
         ? `### Action Required\n\n${assessment.actionItems.map((a) => `- **[${a.severity.toUpperCase()}]** \`${a.file}\` — ${a.description}`).join("\n")}\n\n`
         : "";
     return `## Gemini Dependency Impact Analysis
 
-**${riskLabel[assessment.overallRisk]}** — ${assessment.riskJustification}
+**${safeRiskLabel(assessment.overallRisk)}** — ${assessment.riskJustification}
 
 ### Summary
 
