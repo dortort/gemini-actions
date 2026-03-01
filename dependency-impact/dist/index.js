@@ -31960,14 +31960,16 @@ async function resolveGitHubRepo(dep) {
     // 1. Get PR details
     const pr = await (0, shared_1.getPullRequest)(octokit, owner, repo, prNumber);
     core.info(`PR: ${pr.title}`);
-    // 2. Parse dependency changes from the diff, deduplicating by name::ecosystem.
-    // The same package can appear in multiple manifests in a monorepo; analysis
-    // and release-note lookups are per-package identity, so we keep only the
-    // first occurrence and let findDepLineInPatch locate the right line per file.
+    // 2. Parse dependency changes from the diff, deduplicating by
+    // name::ecosystem::fromVersion::toVersion. The same package can appear in
+    // multiple manifests in a monorepo, sometimes with different version ranges
+    // (e.g. one manifest is behind). We keep one entry per distinct upgrade so
+    // each unique range is analyzed; findDepLineInPatch locates the right line
+    // per manifest file at annotation time.
     const depChanges = (() => {
         const seen = new Set();
         return (0, parsers_1.parseDependencyChanges)(pr.diff, pr.files).filter((dep) => {
-            const key = `${dep.name}::${dep.ecosystem}`;
+            const key = `${dep.name}::${dep.ecosystem}::${dep.fromVersion}::${dep.toVersion}`;
             if (seen.has(key))
                 return false;
             seen.add(key);
@@ -32015,10 +32017,10 @@ async function resolveGitHubRepo(dep) {
     // 5. Fetch release notes
     const isDependabot = /\[bot\]$/.test(pr.author);
     const hasBody = pr.body != null && pr.body.trim().length > 50;
-    // Keyed by "name::ecosystem" to avoid collisions when a PR updates packages
-    // with the same name across different ecosystems (e.g. a monorepo).
+    // Keyed by "name::ecosystem::from::to" so distinct version ranges for the
+    // same package (possible in monorepos) each get their own release notes.
     const releaseNotesPerDep = new Map();
-    const depNoteKey = (d) => `${d.name}::${d.ecosystem}`;
+    const depNoteKey = (d) => `${d.name}::${d.ecosystem}::${d.fromVersion}::${d.toVersion}`;
     if (isDependabot && hasBody) {
         // Dependabot PRs embed release notes in the body — extract per-dep sections
         for (const dep of depChanges) {
@@ -32122,7 +32124,13 @@ async function resolveGitHubRepo(dep) {
         return;
     }
     if (inlineComments.length > 0) {
-        await (0, shared_1.createReview)(octokit, owner, repo, prNumber, body, inlineComments);
+        try {
+            await (0, shared_1.createReview)(octokit, owner, repo, prNumber, body, inlineComments);
+        }
+        catch (err) {
+            core.warning(`createReview failed (${err instanceof Error ? err.message : err}), falling back to plain comment`);
+            await (0, shared_1.postComment)(octokit, owner, repo, prNumber, body);
+        }
     }
     else {
         await (0, shared_1.postComment)(octokit, owner, repo, prNumber, body);
