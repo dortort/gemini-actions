@@ -292,7 +292,12 @@ runAction(async () => {
   }
 
   if (inlineComments.length > 0) {
-    await createReview(octokit, owner, repo, prNumber, body, inlineComments);
+    try {
+      await createReview(octokit, owner, repo, prNumber, body, inlineComments);
+    } catch (err) {
+      core.warning(`createReview failed (${err instanceof Error ? err.message : err}), falling back to plain comment`);
+      await postComment(octokit, owner, repo, prNumber, body);
+    }
   } else {
     await postComment(octokit, owner, repo, prNumber, body);
   }
