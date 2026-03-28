@@ -32,6 +32,9 @@ jobs:
       - name: Build affected actions
         run: npx nx affected --target=build
 
+      - name: Test affected actions
+        run: npx nx affected --target=test
+
       - name: Commit dist changes
         if: github.event_name == 'push'
         run: |
