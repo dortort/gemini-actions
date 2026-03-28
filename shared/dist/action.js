@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getActionContext = getActionContext;
+exports.createActionContext = createActionContext;
 exports.runAction = runAction;
 const core = __importStar(require("@actions/core"));
 const gemini_1 = require("./gemini");
@@ -50,6 +51,13 @@ function getActionContext() {
     const { owner, repo } = (0, github_1.getRepoContext)();
     const model = (0, gemini_1.createGeminiModel)(geminiApiKey, modelName);
     return { octokit, owner, repo, model };
+}
+/**
+ * Build an ActionContext from pre-constructed dependencies.
+ * Useful in tests where you want to inject mocks without touching @actions/core.
+ */
+function createActionContext(opts) {
+    return opts;
 }
 /**
  * Wrap an action's main logic with consistent error handling.

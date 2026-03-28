@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.runAction = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
+exports.runAction = exports.createActionContext = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
 var gemini_1 = require("./gemini");
 Object.defineProperty(exports, "createGeminiModel", { enumerable: true, get: function () { return gemini_1.createGeminiModel; } });
 Object.defineProperty(exports, "generateContent", { enumerable: true, get: function () { return gemini_1.generateContent; } });
@@ -23,5 +23,6 @@ Object.defineProperty(exports, "getRepoTree", { enumerable: true, get: function 
 Object.defineProperty(exports, "listReleaseNotesBetween", { enumerable: true, get: function () { return github_1.listReleaseNotesBetween; } });
 var action_1 = require("./action");
 Object.defineProperty(exports, "getActionContext", { enumerable: true, get: function () { return action_1.getActionContext; } });
+Object.defineProperty(exports, "createActionContext", { enumerable: true, get: function () { return action_1.createActionContext; } });
 Object.defineProperty(exports, "runAction", { enumerable: true, get: function () { return action_1.runAction; } });
 //# sourceMappingURL=index.js.map

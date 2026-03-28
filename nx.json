@@ -5,6 +5,11 @@
       "dependsOn": ["^build"],
       "inputs": ["production", "^production"],
       "cache": true
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "inputs": ["default", "^default"],
+      "cache": true
     }
   },
   "namedInputs": {
