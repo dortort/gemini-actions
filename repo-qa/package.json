@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "ncc build src/index.ts -o dist --source-map --license licenses.txt"
+    "build": "ncc build src/index.ts -o dist --source-map --license licenses.txt",
+    "test": "vitest run"
   },
   "dependencies": {
     "@actions/core": "^1.11.1",
