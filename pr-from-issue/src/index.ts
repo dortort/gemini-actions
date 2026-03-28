@@ -1,176 +1,19 @@
 import * as core from "@actions/core";
-import {
-  generateContent,
-  truncateText,
-  parseJsonResponse,
-  getIssue,
-  getFileContent,
-  createPullRequest,
-  createBranch,
-  createOrUpdateFile,
-  getDefaultBranch,
-  getRepoTree,
-  runAction,
-  getActionContext,
-} from "@gemini-actions/shared";
-
-interface FileChange {
-  path: string;
-  content: string;
-}
+import { runAction, getActionContext } from "@gemini-actions/shared";
+import { runPrFromIssue } from "./run";
 
 runAction(async () => {
+  const ctx = getActionContext();
   const issueNumber = parseInt(core.getInput("issue_number", { required: true }), 10);
-
-  const { octokit, owner, repo, model } = getActionContext();
 
   core.info(`Processing issue #${issueNumber}...`);
 
-  // 1. Get issue details
-  const issue = await getIssue(octokit, owner, repo, issueNumber);
-  core.info(`Issue: ${issue.title}`);
+  const result = await runPrFromIssue(ctx, { issueNumber });
 
-  // 2. Get repository structure for context
-  const defaultBranch = await getDefaultBranch(octokit, owner, repo);
-  const tree = await getRepoTree(octokit, owner, repo, defaultBranch.sha);
-  const fileList = tree
-    .filter((item) => item.type === "blob")
-    .map((item) => item.path);
-
-  // 3. Ask Gemini to identify which files are relevant and what changes to make
-  const fileListText = truncateText(fileList.join("\n"), 50000, "file list");
-  const planPrompt = `You are a software engineer. A GitHub issue has been filed requesting a change to the repository.
-
-**Issue #${issue.number}: ${issue.title}**
-${issue.body ?? "No description provided."}
-
-**Repository files:**
-${fileListText}
-
-Analyze the issue and determine which files need to be created or modified to address it.
-Respond with a JSON array of file paths that are relevant. Only include files that need changes.
-If new files need to be created, include them too.
-
-Respond ONLY with a JSON array of strings, e.g.: ["src/config.ts", "README.md"]`;
-
-  const planResponse = await generateContent(model, planPrompt);
-  let relevantFiles: string[];
-  try {
-    relevantFiles = parseJsonResponse<string[]>(planResponse);
-  } catch {
-    core.warning("Could not parse file plan from Gemini, using issue body heuristics");
-    relevantFiles = fileList.slice(0, 10);
-  }
-
-  // 4. Fetch content of relevant existing files (capped at 20 files, 10K chars each)
-  const maxFilesForContext = 20;
-  const maxFileChars = 10000;
-  const fileContents: Record<string, string> = {};
-  for (const filePath of relevantFiles.slice(0, maxFilesForContext)) {
-    if (fileList.includes(filePath)) {
-      try {
-        const raw = await getFileContent(
-          octokit,
-          owner,
-          repo,
-          filePath,
-          defaultBranch.name,
-        );
-        fileContents[filePath] = truncateText(raw, maxFileChars, filePath);
-      } catch {
-        core.debug(`Could not read ${filePath}, may be a new file`);
-      }
-    }
-  }
-
-  // 5. Ask Gemini to generate the actual code changes
-  const changePrompt = `You are a software engineer implementing a change based on a GitHub issue.
-
-**Issue #${issue.number}: ${issue.title}**
-${issue.body ?? "No description provided."}
-
-**Current file contents:**
-${Object.entries(fileContents)
-  .map(([path, content]) => `--- ${path} ---\n${content}`)
-  .join("\n\n")}
-
-Generate the complete updated file contents for each file that needs to change.
-If a file needs to be created, provide its full content.
-
-Respond ONLY with a JSON array of objects with "path" and "content" fields:
-[{"path": "src/example.ts", "content": "...full file content..."}]
-
-Important:
-- Provide the COMPLETE file content, not just the diff
-- Make minimal changes needed to address the issue
-- Follow existing code style and conventions`;
-
-  const changeResponse = await generateContent(model, changePrompt);
-  const changes = parseJsonResponse<FileChange[]>(changeResponse);
-
-  if (changes.length === 0) {
+  if (result) {
+    core.info(`Created PR #${result.prNumber}`);
+    core.setOutput("pr_number", result.prNumber.toString());
+  } else {
     core.info("Gemini determined no changes are needed");
-    return;
   }
-
-  // 6. Create a new branch and apply changes
-  const branchName = `gemini/issue-${issueNumber}`;
-  await createBranch(octokit, owner, repo, branchName, defaultBranch.sha);
-  core.info(`Created branch: ${branchName}`);
-
-  for (const change of changes) {
-    // Get SHA for existing files so the API can update them
-    let sha: string | undefined;
-    if (fileList.includes(change.path)) {
-      try {
-        const { data } = await octokit.rest.repos.getContent({
-          owner,
-          repo,
-          path: change.path,
-          ref: branchName,
-        });
-        if ("sha" in data) {
-          sha = data.sha;
-        }
-      } catch {
-        // File doesn't exist yet, that's fine
-      }
-    }
-
-    await createOrUpdateFile(
-      octokit,
-      owner,
-      repo,
-      change.path,
-      change.content,
-      `feat: update ${change.path} for issue #${issueNumber}`,
-      branchName,
-      sha,
-    );
-    core.info(`Updated: ${change.path}`);
-  }
-
-  // 7. Create the pull request
-  const prBody = `## Summary
-
-This PR was automatically generated by Gemini to address #${issueNumber}.
-
-### Changes
-${changes.map((c) => `- \`${c.path}\``).join("\n")}
-
-### Issue
-Closes #${issueNumber}
-
----
-*Generated by [gemini-pr-from-issue](https://github.com/dortort/gemini-actions)*`;
-
-  const prNumber = await createPullRequest(octokit, owner, repo, {
-    title: `feat: ${issue.title}`,
-    body: prBody,
-    head: branchName,
-    base: defaultBranch.name,
-  });
-
-  core.info(`Created PR #${prNumber}`);
-  core.setOutput("pr_number", prNumber.toString());
 });

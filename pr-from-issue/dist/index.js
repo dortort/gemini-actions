@@ -31435,6 +31435,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getActionContext = getActionContext;
+exports.createActionContext = createActionContext;
 exports.runAction = runAction;
 const core = __importStar(__nccwpck_require__(6618));
 const gemini_1 = __nccwpck_require__(9700);
@@ -31451,6 +31452,13 @@ function getActionContext() {
     const { owner, repo } = (0, github_1.getRepoContext)();
     const model = (0, gemini_1.createGeminiModel)(geminiApiKey, modelName);
     return { octokit, owner, repo, model };
+}
+/**
+ * Build an ActionContext from pre-constructed dependencies.
+ * Useful in tests where you want to inject mocks without touching @actions/core.
+ */
+function createActionContext(opts) {
+    return opts;
 }
 /**
  * Wrap an action's main logic with consistent error handling.
@@ -31828,7 +31836,7 @@ async function listReleaseNotesBetween(octokit, owner, repo, fromVersion, toVers
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.runAction = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
+exports.runAction = exports.createActionContext = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
 var gemini_1 = __nccwpck_require__(9700);
 Object.defineProperty(exports, "createGeminiModel", ({ enumerable: true, get: function () { return gemini_1.createGeminiModel; } }));
 Object.defineProperty(exports, "generateContent", ({ enumerable: true, get: function () { return gemini_1.generateContent; } }));
@@ -31851,6 +31859,7 @@ Object.defineProperty(exports, "getRepoTree", ({ enumerable: true, get: function
 Object.defineProperty(exports, "listReleaseNotesBetween", ({ enumerable: true, get: function () { return github_1.listReleaseNotesBetween; } }));
 var action_1 = __nccwpck_require__(6941);
 Object.defineProperty(exports, "getActionContext", ({ enumerable: true, get: function () { return action_1.getActionContext; } }));
+Object.defineProperty(exports, "createActionContext", ({ enumerable: true, get: function () { return action_1.createActionContext; } }));
 Object.defineProperty(exports, "runAction", ({ enumerable: true, get: function () { return action_1.runAction; } }));
 //# sourceMappingURL=index.js.map
 
@@ -31897,22 +31906,35 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(6618));
 const shared_1 = __nccwpck_require__(7451);
+const run_1 = __nccwpck_require__(2292);
 (0, shared_1.runAction)(async () => {
+    const ctx = (0, shared_1.getActionContext)();
     const issueNumber = parseInt(core.getInput("issue_number", { required: true }), 10);
-    const { octokit, owner, repo, model } = (0, shared_1.getActionContext)();
     core.info(`Processing issue #${issueNumber}...`);
-    // 1. Get issue details
-    const issue = await (0, shared_1.getIssue)(octokit, owner, repo, issueNumber);
-    core.info(`Issue: ${issue.title}`);
-    // 2. Get repository structure for context
-    const defaultBranch = await (0, shared_1.getDefaultBranch)(octokit, owner, repo);
-    const tree = await (0, shared_1.getRepoTree)(octokit, owner, repo, defaultBranch.sha);
-    const fileList = tree
-        .filter((item) => item.type === "blob")
-        .map((item) => item.path);
-    // 3. Ask Gemini to identify which files are relevant and what changes to make
-    const fileListText = (0, shared_1.truncateText)(fileList.join("\n"), 50000, "file list");
-    const planPrompt = `You are a software engineer. A GitHub issue has been filed requesting a change to the repository.
+    const result = await (0, run_1.runPrFromIssue)(ctx, { issueNumber });
+    if (result) {
+        core.info(`Created PR #${result.prNumber}`);
+        core.setOutput("pr_number", result.prNumber.toString());
+    }
+    else {
+        core.info("Gemini determined no changes are needed");
+    }
+});
+
+
+/***/ }),
+
+/***/ 8606:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.buildPlanPrompt = buildPlanPrompt;
+exports.buildChangePrompt = buildChangePrompt;
+exports.buildPrBody = buildPrBody;
+function buildPlanPrompt(issue, fileListText) {
+    return `You are a software engineer. A GitHub issue has been filed requesting a change to the repository.
 
 **Issue #${issue.number}: ${issue.title}**
 ${issue.body ?? "No description provided."}
@@ -31925,32 +31947,9 @@ Respond with a JSON array of file paths that are relevant. Only include files th
 If new files need to be created, include them too.
 
 Respond ONLY with a JSON array of strings, e.g.: ["src/config.ts", "README.md"]`;
-    const planResponse = await (0, shared_1.generateContent)(model, planPrompt);
-    let relevantFiles;
-    try {
-        relevantFiles = (0, shared_1.parseJsonResponse)(planResponse);
-    }
-    catch {
-        core.warning("Could not parse file plan from Gemini, using issue body heuristics");
-        relevantFiles = fileList.slice(0, 10);
-    }
-    // 4. Fetch content of relevant existing files (capped at 20 files, 10K chars each)
-    const maxFilesForContext = 20;
-    const maxFileChars = 10000;
-    const fileContents = {};
-    for (const filePath of relevantFiles.slice(0, maxFilesForContext)) {
-        if (fileList.includes(filePath)) {
-            try {
-                const raw = await (0, shared_1.getFileContent)(octokit, owner, repo, filePath, defaultBranch.name);
-                fileContents[filePath] = (0, shared_1.truncateText)(raw, maxFileChars, filePath);
-            }
-            catch {
-                core.debug(`Could not read ${filePath}, may be a new file`);
-            }
-        }
-    }
-    // 5. Ask Gemini to generate the actual code changes
-    const changePrompt = `You are a software engineer implementing a change based on a GitHub issue.
+}
+function buildChangePrompt(issue, fileContents) {
+    return `You are a software engineer implementing a change based on a GitHub issue.
 
 **Issue #${issue.number}: ${issue.title}**
 ${issue.body ?? "No description provided."}
@@ -31970,18 +31969,80 @@ Important:
 - Provide the COMPLETE file content, not just the diff
 - Make minimal changes needed to address the issue
 - Follow existing code style and conventions`;
-    const changeResponse = await (0, shared_1.generateContent)(model, changePrompt);
+}
+function buildPrBody(issueNumber, changes) {
+    return `## Summary
+
+This PR was automatically generated by Gemini to address #${issueNumber}.
+
+### Changes
+${changes.map((c) => `- \`${c.path}\``).join("\n")}
+
+### Issue
+Closes #${issueNumber}
+
+---
+*Generated by [gemini-pr-from-issue](https://github.com/dortort/gemini-actions)*`;
+}
+
+
+/***/ }),
+
+/***/ 2292:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.runPrFromIssue = runPrFromIssue;
+const shared_1 = __nccwpck_require__(7451);
+const prompts_1 = __nccwpck_require__(8606);
+async function runPrFromIssue(ctx, inputs) {
+    const { octokit, owner, repo, model } = ctx;
+    const { issueNumber } = inputs;
+    // 1. Get issue details
+    const issue = await (0, shared_1.getIssue)(octokit, owner, repo, issueNumber);
+    // 2. Get repository structure for context
+    const defaultBranch = await (0, shared_1.getDefaultBranch)(octokit, owner, repo);
+    const tree = await (0, shared_1.getRepoTree)(octokit, owner, repo, defaultBranch.sha);
+    const fileList = tree
+        .filter((item) => item.type === "blob")
+        .map((item) => item.path);
+    // 3. Ask Gemini to identify which files are relevant
+    const fileListText = (0, shared_1.truncateText)(fileList.join("\n"), 50000, "file list");
+    const planResponse = await (0, shared_1.generateContent)(model, (0, prompts_1.buildPlanPrompt)(issue, fileListText));
+    let relevantFiles;
+    try {
+        relevantFiles = (0, shared_1.parseJsonResponse)(planResponse);
+    }
+    catch {
+        relevantFiles = fileList.slice(0, 10);
+    }
+    // 4. Fetch content of relevant existing files
+    const maxFilesForContext = 20;
+    const maxFileChars = 10000;
+    const fileContents = {};
+    for (const filePath of relevantFiles.slice(0, maxFilesForContext)) {
+        if (fileList.includes(filePath)) {
+            try {
+                const raw = await (0, shared_1.getFileContent)(octokit, owner, repo, filePath, defaultBranch.name);
+                fileContents[filePath] = (0, shared_1.truncateText)(raw, maxFileChars, filePath);
+            }
+            catch {
+                // May be a new file
+            }
+        }
+    }
+    // 5. Ask Gemini to generate the actual code changes
+    const changeResponse = await (0, shared_1.generateContent)(model, (0, prompts_1.buildChangePrompt)(issue, fileContents));
     const changes = (0, shared_1.parseJsonResponse)(changeResponse);
     if (changes.length === 0) {
-        core.info("Gemini determined no changes are needed");
-        return;
+        return null;
     }
     // 6. Create a new branch and apply changes
     const branchName = `gemini/issue-${issueNumber}`;
     await (0, shared_1.createBranch)(octokit, owner, repo, branchName, defaultBranch.sha);
-    core.info(`Created branch: ${branchName}`);
     for (const change of changes) {
-        // Get SHA for existing files so the API can update them
         let sha;
         if (fileList.includes(change.path)) {
             try {
@@ -31996,34 +32057,20 @@ Important:
                 }
             }
             catch {
-                // File doesn't exist yet, that's fine
+                // File doesn't exist yet
             }
         }
         await (0, shared_1.createOrUpdateFile)(octokit, owner, repo, change.path, change.content, `feat: update ${change.path} for issue #${issueNumber}`, branchName, sha);
-        core.info(`Updated: ${change.path}`);
     }
     // 7. Create the pull request
-    const prBody = `## Summary
-
-This PR was automatically generated by Gemini to address #${issueNumber}.
-
-### Changes
-${changes.map((c) => `- \`${c.path}\``).join("\n")}
-
-### Issue
-Closes #${issueNumber}
-
----
-*Generated by [gemini-pr-from-issue](https://github.com/dortort/gemini-actions)*`;
     const prNumber = await (0, shared_1.createPullRequest)(octokit, owner, repo, {
         title: `feat: ${issue.title}`,
-        body: prBody,
+        body: (0, prompts_1.buildPrBody)(issueNumber, changes),
         head: branchName,
         base: defaultBranch.name,
     });
-    core.info(`Created PR #${prNumber}`);
-    core.setOutput("pr_number", prNumber.toString());
-});
+    return { prNumber };
+}
 
 
 /***/ }),
