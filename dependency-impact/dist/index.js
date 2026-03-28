@@ -31435,6 +31435,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getActionContext = getActionContext;
+exports.createActionContext = createActionContext;
 exports.runAction = runAction;
 const core = __importStar(__nccwpck_require__(6618));
 const gemini_1 = __nccwpck_require__(9700);
@@ -31451,6 +31452,13 @@ function getActionContext() {
     const { owner, repo } = (0, github_1.getRepoContext)();
     const model = (0, gemini_1.createGeminiModel)(geminiApiKey, modelName);
     return { octokit, owner, repo, model };
+}
+/**
+ * Build an ActionContext from pre-constructed dependencies.
+ * Useful in tests where you want to inject mocks without touching @actions/core.
+ */
+function createActionContext(opts) {
+    return opts;
 }
 /**
  * Wrap an action's main logic with consistent error handling.
@@ -31828,7 +31836,7 @@ async function listReleaseNotesBetween(octokit, owner, repo, fromVersion, toVers
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.runAction = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
+exports.runAction = exports.createActionContext = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
 var gemini_1 = __nccwpck_require__(9700);
 Object.defineProperty(exports, "createGeminiModel", ({ enumerable: true, get: function () { return gemini_1.createGeminiModel; } }));
 Object.defineProperty(exports, "generateContent", ({ enumerable: true, get: function () { return gemini_1.generateContent; } }));
@@ -31851,6 +31859,7 @@ Object.defineProperty(exports, "getRepoTree", ({ enumerable: true, get: function
 Object.defineProperty(exports, "listReleaseNotesBetween", ({ enumerable: true, get: function () { return github_1.listReleaseNotesBetween; } }));
 var action_1 = __nccwpck_require__(6941);
 Object.defineProperty(exports, "getActionContext", ({ enumerable: true, get: function () { return action_1.getActionContext; } }));
+Object.defineProperty(exports, "createActionContext", ({ enumerable: true, get: function () { return action_1.createActionContext; } }));
 Object.defineProperty(exports, "runAction", ({ enumerable: true, get: function () { return action_1.runAction; } }));
 //# sourceMappingURL=index.js.map
 
@@ -31897,270 +31906,14 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(6618));
 const shared_1 = __nccwpck_require__(7451);
-const parsers_1 = __nccwpck_require__(2149);
-const prompts_1 = __nccwpck_require__(8606);
-const review_1 = __nccwpck_require__(6701);
-async function resolveGitHubRepo(dep) {
-    if (dep.ecosystem === "go" && dep.name.startsWith("github.com/")) {
-        const parts = dep.name.replace("github.com/", "").split("/");
-        if (parts.length >= 2)
-            return { owner: parts[0], repo: parts[1] };
-    }
-    if (dep.ecosystem === "terraform" && dep.name.startsWith("registry.terraform.io/")) {
-        const parts = dep.name.replace("registry.terraform.io/", "").split("/");
-        if (parts.length >= 2)
-            return { owner: parts[0], repo: `terraform-provider-${parts[1]}` };
-    }
-    if (dep.ecosystem === "npm") {
-        try {
-            const res = await fetch(`https://registry.npmjs.org/${dep.name}`, { signal: AbortSignal.timeout(5000) });
-            if (res.ok) {
-                const data = (await res.json());
-                const url = data?.repository?.url;
-                if (typeof url === "string") {
-                    const cleaned = url.replace(/^git\+/, "").replace(/\.git$/, "").replace(/^git:\/\//, "https://");
-                    const match = cleaned.match(/github\.com\/([^/]+)\/([^/]+)/);
-                    if (match)
-                        return { owner: match[1], repo: match[2] };
-                }
-            }
-        }
-        catch {
-            // Registry lookup failed — fall through
-        }
-    }
-    if (dep.ecosystem === "composer") {
-        try {
-            const res = await fetch(`https://packagist.org/packages/${dep.name}.json`, { signal: AbortSignal.timeout(5000) });
-            if (res.ok) {
-                const data = (await res.json());
-                const versions = data?.package?.versions;
-                if (versions && typeof versions === "object") {
-                    const firstKey = Object.keys(versions)[0];
-                    const url = versions[firstKey]?.source?.url;
-                    if (typeof url === "string") {
-                        const cleaned = url.replace(/\.git$/, "");
-                        const match = cleaned.match(/github\.com\/([^/]+)\/([^/]+)/);
-                        if (match)
-                            return { owner: match[1], repo: match[2] };
-                    }
-                }
-            }
-        }
-        catch {
-            // Registry lookup failed — fall through
-        }
-    }
-    return null;
-}
+const run_1 = __nccwpck_require__(2292);
+const registry_1 = __nccwpck_require__(9094);
 (0, shared_1.runAction)(async () => {
+    const ctx = (0, shared_1.getActionContext)();
     const prNumber = parseInt(core.getInput("pr_number", { required: true }), 10);
-    const { octokit, owner, repo, model } = (0, shared_1.getActionContext)();
     core.info(`Analyzing dependency impact for PR #${prNumber}...`);
-    // 1. Get PR details
-    const pr = await (0, shared_1.getPullRequest)(octokit, owner, repo, prNumber);
-    core.info(`PR: ${pr.title}`);
-    // 2. Parse dependency changes from the diff, deduplicating by
-    // name::ecosystem::fromVersion::toVersion. The same package can appear in
-    // multiple manifests in a monorepo, sometimes with different version ranges
-    // (e.g. one manifest is behind). We keep one entry per distinct upgrade so
-    // each unique range is analyzed; findDepLineInPatch locates the right line
-    // per manifest file at annotation time.
-    const depChanges = (() => {
-        const seen = new Set();
-        return (0, parsers_1.parseDependencyChanges)(pr.diff, pr.files).filter((dep) => {
-            const key = `${dep.name}::${dep.ecosystem}::${dep.fromVersion}::${dep.toVersion}`;
-            if (seen.has(key))
-                return false;
-            seen.add(key);
-            return true;
-        });
-    })();
-    if (depChanges.length === 0) {
-        core.info("No dependency version changes detected in this PR");
-        await (0, shared_1.postComment)(octokit, owner, repo, prNumber, "## Gemini Dependency Impact Analysis\n\nNo dependency version changes detected in this PR.");
-        return;
-    }
-    core.info(`Found ${depChanges.length} dependency change(s): ${depChanges.map((d) => d.name).join(", ")}`);
-    // 3. Get repository file tree to find usage
-    const defaultBranch = await (0, shared_1.getDefaultBranch)(octokit, owner, repo);
-    const tree = await (0, shared_1.getRepoTree)(octokit, owner, repo, defaultBranch.sha);
-    const sourceFiles = tree
-        .filter((item) => item.type === "blob")
-        .filter((item) => /\.(ts|js|tsx|jsx|py|go|java|rb|rs|tf|php)$/.test(item.path))
-        .filter((item) => !item.path.includes("node_modules"))
-        .map((item) => item.path);
-    // 4. Sample source files to find usage of changed dependencies
-    const usageContext = {};
-    for (const dep of depChanges) {
-        usageContext[dep.name] = [];
-        const importPatterns = (0, parsers_1.getImportPatterns)(dep.name, dep.ecosystem);
-        for (const filePath of sourceFiles.slice(0, 100)) {
-            try {
-                const content = await (0, shared_1.getFileContent)(octokit, owner, repo, filePath, defaultBranch.name);
-                if (importPatterns.some((pattern) => content.includes(pattern))) {
-                    const relevantLines = content
-                        .split("\n")
-                        .filter((line) => importPatterns.some((p) => line.includes(p)) ||
-                        line.includes(dep.name))
-                        .slice(0, 20);
-                    if (relevantLines.length > 0) {
-                        usageContext[dep.name].push(`**${filePath}:**\n${relevantLines.join("\n")}`);
-                    }
-                }
-            }
-            catch {
-                // Skip files we can't read
-            }
-        }
-    }
-    // 5. Fetch release notes
-    const isDependabot = /\[bot\]$/.test(pr.author);
-    const hasBody = pr.body != null && pr.body.trim().length > 50;
-    // Keyed by "name::ecosystem::from::to" so distinct version ranges for the
-    // same package (possible in monorepos) each get their own release notes.
-    const releaseNotesPerDep = new Map();
-    const depNoteKey = (d) => `${d.name}::${d.ecosystem}::${d.fromVersion}::${d.toVersion}`;
-    if (isDependabot && hasBody) {
-        // Dependabot PRs embed release notes in the body — extract per-dep sections
-        for (const dep of depChanges) {
-            releaseNotesPerDep.set(depNoteKey(dep), (0, parsers_1.extractDependabotSection)(pr.body, dep.name));
-        }
-    }
-    else {
-        for (const dep of depChanges) {
-            const ghRepo = await resolveGitHubRepo(dep);
-            if (ghRepo) {
-                const notes = await (0, shared_1.listReleaseNotesBetween)(octokit, ghRepo.owner, ghRepo.repo, dep.fromVersion, dep.toVersion);
-                if (notes) {
-                    releaseNotesPerDep.set(depNoteKey(dep), notes);
-                }
-            }
-        }
-        // Fall back to PR body if no GitHub Releases found.
-        if (releaseNotesPerDep.size === 0 && hasBody) {
-            for (const dep of depChanges) {
-                releaseNotesPerDep.set(depNoteKey(dep), pr.body);
-            }
-        }
-    }
-    // 6. Enrich dependency changes with upgrade type and release notes
-    const enrichedDeps = depChanges.map((dep) => ({
-        ...dep,
-        upgradeType: (0, parsers_1.classifyUpgrade)(dep.fromVersion, dep.toVersion),
-        releaseNotes: releaseNotesPerDep.get(depNoteKey(dep)) ?? null,
-    }));
-    const maxUsageCharsPerDep = 5000;
-    const usageSections = Object.entries(usageContext)
-        .map(([name, usages]) => {
-        if (usages.length === 0)
-            return `### ${name}\nNo direct imports found in source files.`;
-        const joined = usages.join("\n\n");
-        return `### ${name}\n${(0, shared_1.truncateText)(joined, maxUsageCharsPerDep, `${name} usage`)}`;
-    })
-        .join("\n\n");
-    const hasUsage = Object.values(usageContext).some((usages) => usages.length > 0);
-    // 7. Step 1: Extract breaking changes from release notes
-    core.info("Step 1: Extracting breaking changes from release notes...");
-    let step1Result;
-    try {
-        const step1Response = await (0, shared_1.generateContent)(model, (0, prompts_1.buildStep1Prompt)(enrichedDeps), 200_000);
-        step1Result = (0, shared_1.parseJsonResponse)(step1Response);
-        core.info(`Step 1 complete: ${step1Result.dependencies.filter((d) => d.hasConfirmedBreakingChanges).length} dep(s) with breaking changes`);
-    }
-    catch (err) {
-        core.warning(`Step 1 failed (${err instanceof Error ? err.message : err}), falling back to legacy prompt`);
-        await runLegacyFallback(enrichedDeps, usageSections, hasUsage, pr.diff);
-        return;
-    }
-    // 8. Step 2: Cross-reference with codebase usage (conditional)
-    const hasBreakingChanges = step1Result.dependencies.some((d) => d.hasConfirmedBreakingChanges ||
-        (d.deprecations?.length ?? 0) > 0 ||
-        (d.notableChanges?.length ?? 0) > 0);
-    let step2Result = { impacts: [], unaffectedUsages: [] };
-    if (hasUsage && hasBreakingChanges) {
-        core.info("Step 2: Cross-referencing breaking changes with codebase usage...");
-        try {
-            const step2Response = await (0, shared_1.generateContent)(model, (0, prompts_1.buildStep2Prompt)(step1Result, usageSections), 300_000);
-            const parsed = (0, shared_1.parseJsonResponse)(step2Response);
-            core.info(`Step 2 complete: ${parsed.impacts.length} impact(s) found`);
-            // Assign only after all field accesses succeed so a malformed response
-            // does not overwrite the safe default before the catch block runs.
-            step2Result = parsed;
-        }
-        catch (err) {
-            core.warning(`Step 2 failed (${err instanceof Error ? err.message : err}), proceeding with empty impact analysis`);
-        }
-    }
-    else {
-        core.info("Step 2: Skipped — no breaking changes or no codebase usage detected");
-    }
-    // 9. Step 3: Synthesize final assessment
-    core.info("Step 3: Synthesizing final assessment...");
-    let assessment;
-    try {
-        const step3Prompt = hasUsage
-            ? (0, prompts_1.buildStep3Prompt)(enrichedDeps, step1Result, step2Result)
-            : (0, prompts_1.buildStep3NoUsagePrompt)(enrichedDeps, step1Result);
-        const step3Response = await (0, shared_1.generateContent)(model, step3Prompt, 100_000);
-        assessment = (0, shared_1.parseJsonResponse)(step3Response);
-        core.info(`Step 3 complete: overall risk = ${assessment.overallRisk}`);
-    }
-    catch (err) {
-        core.warning(`Step 3 failed (${err instanceof Error ? err.message : err}), falling back to legacy prompt`);
-        await runLegacyFallback(enrichedDeps, usageSections, hasUsage, pr.diff);
-        return;
-    }
-    // 10. Post the analysis as a review with inline comments
-    let body;
-    let inlineComments;
-    try {
-        body = (0, review_1.buildReviewBody)(assessment);
-        inlineComments = (0, review_1.buildInlineComments)(assessment, enrichedDeps, pr.files);
-    }
-    catch (err) {
-        core.warning(`Review rendering failed (${err instanceof Error ? err.message : err}), falling back to legacy prompt`);
-        await runLegacyFallback(enrichedDeps, usageSections, hasUsage, pr.diff);
-        return;
-    }
-    if (inlineComments.length > 0) {
-        try {
-            await (0, shared_1.createReview)(octokit, owner, repo, prNumber, body, inlineComments);
-        }
-        catch (err) {
-            core.warning(`createReview failed (${err instanceof Error ? err.message : err}), falling back to plain comment`);
-            await (0, shared_1.postComment)(octokit, owner, repo, prNumber, body);
-        }
-    }
-    else {
-        await (0, shared_1.postComment)(octokit, owner, repo, prNumber, body);
-    }
-    core.info(`Dependency impact analysis posted (${inlineComments.length} inline comment(s))`);
-    // --- Legacy fallback for when structured pipeline fails ---
-    async function runLegacyFallback(deps, usageSects, usage, diff) {
-        const depChangesList = deps
-            .map((d) => `- **${d.name}**: ${d.fromVersion} → ${d.toVersion} (${d.ecosystem})`)
-            .join("\n");
-        let combinedNotes = null;
-        for (const dep of deps) {
-            if (dep.releaseNotes) {
-                combinedNotes = (combinedNotes ?? "") + `\n\n## ${dep.name}\n${dep.releaseNotes}`;
-            }
-        }
-        const prBodySection = combinedNotes
-            ? `**Release Notes:**\n${(0, shared_1.truncateText)(combinedNotes.trim(), 15000, "release notes")}`
-            : "**Release Notes:** No release notes available.";
-        const prompt = (0, prompts_1.buildLegacyPrompt)(depChangesList, prBodySection, usage, usageSects, diff);
-        const analysis = await (0, shared_1.generateContent)(model, prompt);
-        const comment = `## Gemini Dependency Impact Analysis
-
-${analysis}
-
----
-*${deps.length} dependency change(s) · ${Object.values(usageContext).flat().length} usage site(s) found — Generated by [gemini-dependency-impact](https://github.com/dortort/gemini-actions)*`;
-        await (0, shared_1.postComment)(octokit, owner, repo, prNumber, comment);
-        core.info("Dependency impact analysis posted (legacy fallback)");
-    }
+    await (0, run_1.runDependencyImpact)(ctx, { prNumber }, (0, registry_1.createRegistryResolver)());
+    core.info("Dependency impact analysis complete");
 });
 
 
@@ -32662,6 +32415,72 @@ RULES:
 
 /***/ }),
 
+/***/ 9094:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.createRegistryResolver = createRegistryResolver;
+function createRegistryResolver(fetchFn = fetch) {
+    return async function resolveGitHubRepo(dep) {
+        if (dep.ecosystem === "go" && dep.name.startsWith("github.com/")) {
+            const parts = dep.name.replace("github.com/", "").split("/");
+            if (parts.length >= 2)
+                return { owner: parts[0], repo: parts[1] };
+        }
+        if (dep.ecosystem === "terraform" && dep.name.startsWith("registry.terraform.io/")) {
+            const parts = dep.name.replace("registry.terraform.io/", "").split("/");
+            if (parts.length >= 2)
+                return { owner: parts[0], repo: `terraform-provider-${parts[1]}` };
+        }
+        if (dep.ecosystem === "npm") {
+            try {
+                const res = await fetchFn(`https://registry.npmjs.org/${dep.name}`, { signal: AbortSignal.timeout(5000) });
+                if (res.ok) {
+                    const data = (await res.json());
+                    const url = data?.repository?.url;
+                    if (typeof url === "string") {
+                        const cleaned = url.replace(/^git\+/, "").replace(/\.git$/, "").replace(/^git:\/\//, "https://");
+                        const match = cleaned.match(/github\.com\/([^/]+)\/([^/]+)/);
+                        if (match)
+                            return { owner: match[1], repo: match[2] };
+                    }
+                }
+            }
+            catch {
+                // Registry lookup failed
+            }
+        }
+        if (dep.ecosystem === "composer") {
+            try {
+                const res = await fetchFn(`https://packagist.org/packages/${dep.name}.json`, { signal: AbortSignal.timeout(5000) });
+                if (res.ok) {
+                    const data = (await res.json());
+                    const versions = data?.package?.versions;
+                    if (versions && typeof versions === "object") {
+                        const firstKey = Object.keys(versions)[0];
+                        const url = versions[firstKey]?.source?.url;
+                        if (typeof url === "string") {
+                            const cleaned = url.replace(/\.git$/, "");
+                            const match = cleaned.match(/github\.com\/([^/]+)\/([^/]+)/);
+                            if (match)
+                                return { owner: match[1], repo: match[2] };
+                        }
+                    }
+                }
+            }
+            catch {
+                // Registry lookup failed
+            }
+        }
+        return null;
+    };
+}
+
+
+/***/ }),
+
 /***/ 6701:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
@@ -32740,6 +32559,200 @@ function buildInlineComments(assessment, enrichedDeps, prFiles) {
         }
     }
     return comments;
+}
+
+
+/***/ }),
+
+/***/ 2292:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.runDependencyImpact = runDependencyImpact;
+const shared_1 = __nccwpck_require__(7451);
+const parsers_1 = __nccwpck_require__(2149);
+const prompts_1 = __nccwpck_require__(8606);
+const review_1 = __nccwpck_require__(6701);
+async function runDependencyImpact(ctx, inputs, resolveGitHubRepo) {
+    const { octokit, owner, repo, model } = ctx;
+    const { prNumber } = inputs;
+    // 1. Get PR details
+    const pr = await (0, shared_1.getPullRequest)(octokit, owner, repo, prNumber);
+    // 2. Parse dependency changes, deduplicating
+    const depChanges = (() => {
+        const seen = new Set();
+        return (0, parsers_1.parseDependencyChanges)(pr.diff, pr.files).filter((dep) => {
+            const key = `${dep.name}::${dep.ecosystem}::${dep.fromVersion}::${dep.toVersion}`;
+            if (seen.has(key))
+                return false;
+            seen.add(key);
+            return true;
+        });
+    })();
+    if (depChanges.length === 0) {
+        await (0, shared_1.postComment)(octokit, owner, repo, prNumber, "## Gemini Dependency Impact Analysis\n\nNo dependency version changes detected in this PR.");
+        return;
+    }
+    // 3. Get repository file tree to find usage
+    const defaultBranch = await (0, shared_1.getDefaultBranch)(octokit, owner, repo);
+    const tree = await (0, shared_1.getRepoTree)(octokit, owner, repo, defaultBranch.sha);
+    const sourceFiles = tree
+        .filter((item) => item.type === "blob")
+        .filter((item) => /\.(ts|js|tsx|jsx|py|go|java|rb|rs|tf|php)$/.test(item.path))
+        .filter((item) => !item.path.includes("node_modules"))
+        .map((item) => item.path);
+    // 4. Sample source files to find usage of changed dependencies
+    const usageContext = {};
+    for (const dep of depChanges) {
+        usageContext[dep.name] = [];
+        const importPatterns = (0, parsers_1.getImportPatterns)(dep.name, dep.ecosystem);
+        for (const filePath of sourceFiles.slice(0, 100)) {
+            try {
+                const content = await (0, shared_1.getFileContent)(octokit, owner, repo, filePath, defaultBranch.name);
+                if (importPatterns.some((pattern) => content.includes(pattern))) {
+                    const relevantLines = content
+                        .split("\n")
+                        .filter((line) => importPatterns.some((p) => line.includes(p)) ||
+                        line.includes(dep.name))
+                        .slice(0, 20);
+                    if (relevantLines.length > 0) {
+                        usageContext[dep.name].push(`**${filePath}:**\n${relevantLines.join("\n")}`);
+                    }
+                }
+            }
+            catch {
+                // Skip files we can't read
+            }
+        }
+    }
+    // 5. Fetch release notes
+    const isDependabot = /\[bot\]$/.test(pr.author);
+    const hasBody = pr.body != null && pr.body.trim().length > 50;
+    const releaseNotesPerDep = new Map();
+    const depNoteKey = (d) => `${d.name}::${d.ecosystem}::${d.fromVersion}::${d.toVersion}`;
+    if (isDependabot && hasBody) {
+        for (const dep of depChanges) {
+            releaseNotesPerDep.set(depNoteKey(dep), (0, parsers_1.extractDependabotSection)(pr.body, dep.name));
+        }
+    }
+    else {
+        for (const dep of depChanges) {
+            const ghRepo = await resolveGitHubRepo(dep);
+            if (ghRepo) {
+                const notes = await (0, shared_1.listReleaseNotesBetween)(octokit, ghRepo.owner, ghRepo.repo, dep.fromVersion, dep.toVersion);
+                if (notes) {
+                    releaseNotesPerDep.set(depNoteKey(dep), notes);
+                }
+            }
+        }
+        if (releaseNotesPerDep.size === 0 && hasBody) {
+            for (const dep of depChanges) {
+                releaseNotesPerDep.set(depNoteKey(dep), pr.body);
+            }
+        }
+    }
+    // 6. Enrich dependency changes
+    const enrichedDeps = depChanges.map((dep) => ({
+        ...dep,
+        upgradeType: (0, parsers_1.classifyUpgrade)(dep.fromVersion, dep.toVersion),
+        releaseNotes: releaseNotesPerDep.get(depNoteKey(dep)) ?? null,
+    }));
+    const maxUsageCharsPerDep = 5000;
+    const usageSections = Object.entries(usageContext)
+        .map(([name, usages]) => {
+        if (usages.length === 0)
+            return `### ${name}\nNo direct imports found in source files.`;
+        const joined = usages.join("\n\n");
+        return `### ${name}\n${(0, shared_1.truncateText)(joined, maxUsageCharsPerDep, `${name} usage`)}`;
+    })
+        .join("\n\n");
+    const hasUsage = Object.values(usageContext).some((usages) => usages.length > 0);
+    // 7. Step 1: Extract breaking changes
+    let step1Result;
+    try {
+        const step1Response = await (0, shared_1.generateContent)(model, (0, prompts_1.buildStep1Prompt)(enrichedDeps), 200_000);
+        step1Result = (0, shared_1.parseJsonResponse)(step1Response);
+    }
+    catch {
+        await runLegacyFallback(enrichedDeps, usageSections, hasUsage, pr.diff);
+        return;
+    }
+    // 8. Step 2: Cross-reference with codebase usage (conditional)
+    const hasBreakingChanges = step1Result.dependencies.some((d) => d.hasConfirmedBreakingChanges ||
+        (d.deprecations?.length ?? 0) > 0 ||
+        (d.notableChanges?.length ?? 0) > 0);
+    let step2Result = { impacts: [], unaffectedUsages: [] };
+    if (hasUsage && hasBreakingChanges) {
+        try {
+            const step2Response = await (0, shared_1.generateContent)(model, (0, prompts_1.buildStep2Prompt)(step1Result, usageSections), 300_000);
+            const parsed = (0, shared_1.parseJsonResponse)(step2Response);
+            step2Result = parsed;
+        }
+        catch {
+            // Proceed with empty impact analysis
+        }
+    }
+    // 9. Step 3: Synthesize final assessment
+    let assessment;
+    try {
+        const step3Prompt = hasUsage
+            ? (0, prompts_1.buildStep3Prompt)(enrichedDeps, step1Result, step2Result)
+            : (0, prompts_1.buildStep3NoUsagePrompt)(enrichedDeps, step1Result);
+        const step3Response = await (0, shared_1.generateContent)(model, step3Prompt, 100_000);
+        assessment = (0, shared_1.parseJsonResponse)(step3Response);
+    }
+    catch {
+        await runLegacyFallback(enrichedDeps, usageSections, hasUsage, pr.diff);
+        return;
+    }
+    // 10. Post the analysis as a review with inline comments
+    let body;
+    let inlineComments;
+    try {
+        body = (0, review_1.buildReviewBody)(assessment);
+        inlineComments = (0, review_1.buildInlineComments)(assessment, enrichedDeps, pr.files);
+    }
+    catch {
+        await runLegacyFallback(enrichedDeps, usageSections, hasUsage, pr.diff);
+        return;
+    }
+    if (inlineComments.length > 0) {
+        try {
+            await (0, shared_1.createReview)(octokit, owner, repo, prNumber, body, inlineComments);
+        }
+        catch {
+            await (0, shared_1.postComment)(octokit, owner, repo, prNumber, body);
+        }
+    }
+    else {
+        await (0, shared_1.postComment)(octokit, owner, repo, prNumber, body);
+    }
+    // --- Legacy fallback ---
+    async function runLegacyFallback(deps, usageSects, usage, diff) {
+        const depChangesList = deps
+            .map((d) => `- **${d.name}**: ${d.fromVersion} → ${d.toVersion} (${d.ecosystem})`)
+            .join("\n");
+        let combinedNotes = null;
+        for (const dep of deps) {
+            if (dep.releaseNotes) {
+                combinedNotes = (combinedNotes ?? "") + `\n\n## ${dep.name}\n${dep.releaseNotes}`;
+            }
+        }
+        const prBodySection = combinedNotes
+            ? `**Release Notes:**\n${(0, shared_1.truncateText)(combinedNotes.trim(), 15000, "release notes")}`
+            : "**Release Notes:** No release notes available.";
+        const prompt = (0, prompts_1.buildLegacyPrompt)(depChangesList, prBodySection, usage, usageSects, diff);
+        const analysis = await (0, shared_1.generateContent)(model, prompt);
+        const comment = `## Gemini Dependency Impact Analysis
+
+${analysis}
+
+---
+*${deps.length} dependency change(s) · ${Object.values(usageContext).flat().length} usage site(s) found — Generated by [gemini-dependency-impact](https://github.com/dortort/gemini-actions)*`;
+        await (0, shared_1.postComment)(octokit, owner, repo, prNumber, comment);
+    }
 }
 
 
