@@ -31435,6 +31435,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getActionContext = getActionContext;
+exports.createActionContext = createActionContext;
 exports.runAction = runAction;
 const core = __importStar(__nccwpck_require__(6618));
 const gemini_1 = __nccwpck_require__(9700);
@@ -31451,6 +31452,13 @@ function getActionContext() {
     const { owner, repo } = (0, github_1.getRepoContext)();
     const model = (0, gemini_1.createGeminiModel)(geminiApiKey, modelName);
     return { octokit, owner, repo, model };
+}
+/**
+ * Build an ActionContext from pre-constructed dependencies.
+ * Useful in tests where you want to inject mocks without touching @actions/core.
+ */
+function createActionContext(opts) {
+    return opts;
 }
 /**
  * Wrap an action's main logic with consistent error handling.
@@ -31828,7 +31836,7 @@ async function listReleaseNotesBetween(octokit, owner, repo, fromVersion, toVers
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.runAction = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
+exports.runAction = exports.createActionContext = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
 var gemini_1 = __nccwpck_require__(9700);
 Object.defineProperty(exports, "createGeminiModel", ({ enumerable: true, get: function () { return gemini_1.createGeminiModel; } }));
 Object.defineProperty(exports, "generateContent", ({ enumerable: true, get: function () { return gemini_1.generateContent; } }));
@@ -31851,6 +31859,7 @@ Object.defineProperty(exports, "getRepoTree", ({ enumerable: true, get: function
 Object.defineProperty(exports, "listReleaseNotesBetween", ({ enumerable: true, get: function () { return github_1.listReleaseNotesBetween; } }));
 var action_1 = __nccwpck_require__(6941);
 Object.defineProperty(exports, "getActionContext", ({ enumerable: true, get: function () { return action_1.getActionContext; } }));
+Object.defineProperty(exports, "createActionContext", ({ enumerable: true, get: function () { return action_1.createActionContext; } }));
 Object.defineProperty(exports, "runAction", ({ enumerable: true, get: function () { return action_1.runAction; } }));
 //# sourceMappingURL=index.js.map
 
@@ -31899,15 +31908,12 @@ const core = __importStar(__nccwpck_require__(6618));
 const fs = __importStar(__nccwpck_require__(9896));
 const path = __importStar(__nccwpck_require__(6928));
 const shared_1 = __nccwpck_require__(7451);
+const run_1 = __nccwpck_require__(2292);
 (0, shared_1.runAction)(async () => {
+    const ctx = (0, shared_1.getActionContext)();
     const prNumber = parseInt(core.getInput("pr_number", { required: true }), 10);
     const testOutputPath = core.getInput("test_output", { required: true });
-    const { octokit, owner, repo, model } = (0, shared_1.getActionContext)();
-    core.info(`Diagnosing test failures for PR #${prNumber}...`);
-    // 1. Get PR details and diff
-    const pr = await (0, shared_1.getPullRequest)(octokit, owner, repo, prNumber);
-    core.info(`PR: ${pr.title} (${pr.files.length} files changed)`);
-    // 2. Read test output
+    // Read the test output file — fs stays in the thin shell, not in the testable run function
     let testOutput;
     const resolvedPath = path.resolve(testOutputPath);
     if (fs.existsSync(resolvedPath)) {
@@ -31915,7 +31921,6 @@ const shared_1 = __nccwpck_require__(7451);
         core.info(`Read test output from ${resolvedPath} (${testOutput.length} chars)`);
     }
     else {
-        // Try to find it as a workspace artifact
         const workspacePath = path.join(process.env.GITHUB_WORKSPACE || ".", testOutputPath);
         if (fs.existsSync(workspacePath)) {
             testOutput = fs.readFileSync(workspacePath, "utf-8");
@@ -31925,12 +31930,69 @@ const shared_1 = __nccwpck_require__(7451);
             throw new Error(`Test output not found at ${resolvedPath} or ${workspacePath}`);
         }
     }
+    await (0, run_1.runTestFailureDiagnosis)(ctx, { prNumber, testOutput });
+});
+
+
+/***/ }),
+
+/***/ 2149:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.extractTestFilePaths = extractTestFilePaths;
+/**
+ * Extract test file paths from test runner output.
+ * Supports Jest/Vitest, pytest, Go test, and generic patterns.
+ */
+function extractTestFilePaths(testOutput) {
+    const paths = new Set();
+    const patterns = [
+        // Jest/Vitest: FAIL src/tests/foo.test.ts
+        /(?:FAIL|FAILED)\s+(\S+\.(?:test|spec)\.\w+)/g,
+        // pytest: FAILED tests/test_foo.py::test_bar
+        /FAILED\s+(\S+\.py)::/g,
+        // Go: --- FAIL: TestFoo (path/to/test.go:42)
+        /\(([^)]+_test\.go):\d+\)/g,
+        // Generic file paths with test in the name
+        /(\S+(?:test|spec)\S*\.(?:ts|js|tsx|jsx|py|go|java|rb))/gi,
+    ];
+    for (const pattern of patterns) {
+        let match;
+        while ((match = pattern.exec(testOutput)) !== null) {
+            const filePath = match[1].replace(/^\.\//, "");
+            if (!filePath.includes("node_modules")) {
+                paths.add(filePath);
+            }
+        }
+    }
+    return [...paths];
+}
+
+
+/***/ }),
+
+/***/ 2292:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.runTestFailureDiagnosis = runTestFailureDiagnosis;
+const shared_1 = __nccwpck_require__(7451);
+const parsers_1 = __nccwpck_require__(2149);
+async function runTestFailureDiagnosis(ctx, inputs) {
+    const { octokit, owner, repo, model } = ctx;
+    const { prNumber } = inputs;
     // Truncate very long test output to fit in the prompt
-    testOutput = (0, shared_1.truncateText)(testOutput, 15000, "test output");
-    // 3. Extract failing test file names from the output
-    const testFilePatterns = extractTestFilePaths(testOutput);
-    core.info(`Detected test files in output: ${testFilePatterns.join(", ") || "none"}`);
-    // 4. Fetch failing test source code (if identifiable)
+    const testOutput = (0, shared_1.truncateText)(inputs.testOutput, 15000, "test output");
+    // 1. Get PR details and diff
+    const pr = await (0, shared_1.getPullRequest)(octokit, owner, repo, prNumber);
+    // 2. Extract failing test file names from the output
+    const testFilePatterns = (0, parsers_1.extractTestFilePaths)(testOutput);
+    // 3. Fetch failing test source code (if identifiable)
     const testSources = {};
     for (const testFile of testFilePatterns.slice(0, 5)) {
         try {
@@ -31938,10 +32000,10 @@ const shared_1 = __nccwpck_require__(7451);
             testSources[testFile] = content;
         }
         catch {
-            core.debug(`Could not fetch test file: ${testFile}`);
+            // Skip files we can't read
         }
     }
-    // 5. Send to Gemini for diagnosis
+    // 4. Send to Gemini for diagnosis
     const prompt = `You are a senior software engineer diagnosing test failures on a pull request.
 
 **PR Title:** ${pr.title}
@@ -31974,7 +32036,7 @@ Provide a diagnosis that includes:
 
 Format your response as clear, structured markdown.`;
     const diagnosis = await (0, shared_1.generateContent)(model, prompt);
-    // 6. Post the diagnosis as a comment
+    // 5. Post the diagnosis as a comment
     const comment = `## Gemini Test Failure Diagnosis
 
 ${diagnosis}
@@ -31982,31 +32044,6 @@ ${diagnosis}
 ---
 *Analyzed ${pr.files.length} changed file(s) and ${testFilePatterns.length} test file(s) — Generated by [gemini-test-failure-diagnosis](https://github.com/dortort/gemini-actions)*`;
     await (0, shared_1.postComment)(octokit, owner, repo, prNumber, comment);
-    core.info("Test failure diagnosis posted");
-});
-function extractTestFilePaths(testOutput) {
-    const paths = new Set();
-    // Common patterns for test file paths in output
-    const patterns = [
-        // Jest/Vitest: FAIL src/tests/foo.test.ts
-        /(?:FAIL|FAILED)\s+(\S+\.(?:test|spec)\.\w+)/g,
-        // pytest: FAILED tests/test_foo.py::test_bar
-        /FAILED\s+(\S+\.py)::/g,
-        // Go: --- FAIL: TestFoo (path/to/test.go:42)
-        /\(([^)]+_test\.go):\d+\)/g,
-        // Generic file paths with test in the name
-        /(\S+(?:test|spec)\S*\.(?:ts|js|tsx|jsx|py|go|java|rb))/gi,
-    ];
-    for (const pattern of patterns) {
-        let match;
-        while ((match = pattern.exec(testOutput)) !== null) {
-            const filePath = match[1].replace(/^\.\//, "");
-            if (!filePath.includes("node_modules")) {
-                paths.add(filePath);
-            }
-        }
-    }
-    return [...paths];
 }
 
 
