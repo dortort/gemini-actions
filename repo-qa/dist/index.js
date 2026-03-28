@@ -31435,6 +31435,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getActionContext = getActionContext;
+exports.createActionContext = createActionContext;
 exports.runAction = runAction;
 const core = __importStar(__nccwpck_require__(6618));
 const gemini_1 = __nccwpck_require__(9700);
@@ -31451,6 +31452,13 @@ function getActionContext() {
     const { owner, repo } = (0, github_1.getRepoContext)();
     const model = (0, gemini_1.createGeminiModel)(geminiApiKey, modelName);
     return { octokit, owner, repo, model };
+}
+/**
+ * Build an ActionContext from pre-constructed dependencies.
+ * Useful in tests where you want to inject mocks without touching @actions/core.
+ */
+function createActionContext(opts) {
+    return opts;
 }
 /**
  * Wrap an action's main logic with consistent error handling.
@@ -31828,7 +31836,7 @@ async function listReleaseNotesBetween(octokit, owner, repo, fromVersion, toVers
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.runAction = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
+exports.runAction = exports.createActionContext = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
 var gemini_1 = __nccwpck_require__(9700);
 Object.defineProperty(exports, "createGeminiModel", ({ enumerable: true, get: function () { return gemini_1.createGeminiModel; } }));
 Object.defineProperty(exports, "generateContent", ({ enumerable: true, get: function () { return gemini_1.generateContent; } }));
@@ -31851,8 +31859,36 @@ Object.defineProperty(exports, "getRepoTree", ({ enumerable: true, get: function
 Object.defineProperty(exports, "listReleaseNotesBetween", ({ enumerable: true, get: function () { return github_1.listReleaseNotesBetween; } }));
 var action_1 = __nccwpck_require__(6941);
 Object.defineProperty(exports, "getActionContext", ({ enumerable: true, get: function () { return action_1.getActionContext; } }));
+Object.defineProperty(exports, "createActionContext", ({ enumerable: true, get: function () { return action_1.createActionContext; } }));
 Object.defineProperty(exports, "runAction", ({ enumerable: true, get: function () { return action_1.runAction; } }));
 //# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 634:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.matchGlob = matchGlob;
+exports.matchesAnyGlob = matchesAnyGlob;
+/**
+ * Match a file path against a glob pattern.
+ * Supports * (single segment) and ** (any depth).
+ */
+function matchGlob(filePath, pattern) {
+    const regexStr = pattern
+        .replace(/\./g, "\\.")
+        .replace(/\*\*/g, "{{GLOBSTAR}}")
+        .replace(/\*/g, "[^/]*")
+        .replace(/\{\{GLOBSTAR\}\}/g, ".*");
+    return new RegExp(`^${regexStr}$`).test(filePath);
+}
+function matchesAnyGlob(filePath, patterns) {
+    return patterns.some((pattern) => matchGlob(filePath, pattern));
+}
+
 
 /***/ }),
 
@@ -31897,66 +31933,32 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(6618));
 const shared_1 = __nccwpck_require__(7451);
-function matchGlob(filePath, pattern) {
-    // Convert glob pattern to regex
-    const regexStr = pattern
-        .replace(/\./g, "\\.")
-        .replace(/\*\*/g, "{{GLOBSTAR}}")
-        .replace(/\*/g, "[^/]*")
-        .replace(/\{\{GLOBSTAR\}\}/g, ".*");
-    return new RegExp(`^${regexStr}$`).test(filePath);
-}
-function matchesAnyGlob(filePath, patterns) {
-    return patterns.some((pattern) => matchGlob(filePath, pattern));
-}
+const run_1 = __nccwpck_require__(2292);
 (0, shared_1.runAction)(async () => {
+    const ctx = (0, shared_1.getActionContext)();
     const issueNumberStr = core.getInput("issue_number");
     const discussionIdStr = core.getInput("discussion_id");
     const sourcePaths = core.getInput("source_paths") || "src/**";
-    if (!issueNumberStr && !discussionIdStr) {
-        throw new Error("Either issue_number or discussion_id must be provided");
-    }
-    const { octokit, owner, repo, model } = (0, shared_1.getActionContext)();
-    // 1. Get the question
-    let question;
-    let questionTitle;
-    let responseTarget;
-    if (issueNumberStr) {
-        const issueNumber = parseInt(issueNumberStr, 10);
-        const issue = await (0, shared_1.getIssue)(octokit, owner, repo, issueNumber);
-        questionTitle = issue.title;
-        question = `${issue.title}\n\n${issue.body ?? ""}`;
-        responseTarget = { type: "issue", number: issueNumber };
-        core.info(`Question from issue #${issueNumber}: ${issue.title}`);
-    }
-    else {
-        const discussionId = discussionIdStr;
-        // Fetch discussion via GraphQL
-        const { repository } = await octokit.graphql(`query($owner: String!, $repo: String!, $number: Int!) {
-        repository(owner: $owner, name: $repo) {
-          discussion(number: $number) {
-            title
-            body
-            number
-          }
-        }
-      }`, { owner, repo, number: parseInt(discussionId, 10) });
-        questionTitle = repository.discussion.title;
-        question = `${repository.discussion.title}\n\n${repository.discussion.body}`;
-        responseTarget = { type: "discussion", id: discussionId };
-        core.info(`Question from discussion #${discussionId}: ${questionTitle}`);
-    }
-    // 2. Get repository file tree and filter by source_paths
-    const defaultBranch = await (0, shared_1.getDefaultBranch)(octokit, owner, repo);
-    const tree = await (0, shared_1.getRepoTree)(octokit, owner, repo, defaultBranch.sha);
-    const globs = sourcePaths.split(",").map((s) => s.trim());
-    const sourceFiles = tree
-        .filter((item) => item.type === "blob")
-        .filter((item) => matchesAnyGlob(item.path, globs))
-        .map((item) => item.path);
-    core.info(`Found ${sourceFiles.length} source files matching: ${sourcePaths}`);
-    // 3. Ask Gemini to identify relevant files based on the question
-    const fileSelectionPrompt = `A user asked a question about a codebase. Which files are most likely relevant to answering it?
+    await (0, run_1.runRepoQA)(ctx, {
+        issueNumber: issueNumberStr ? parseInt(issueNumberStr, 10) : undefined,
+        discussionId: discussionIdStr || undefined,
+        sourcePaths,
+    });
+});
+
+
+/***/ }),
+
+/***/ 8606:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.buildFileSelectionPrompt = buildFileSelectionPrompt;
+exports.buildAnswerPrompt = buildAnswerPrompt;
+function buildFileSelectionPrompt(question, sourceFiles) {
+    return `A user asked a question about a codebase. Which files are most likely relevant to answering it?
 
 **Question:** ${question}
 
@@ -31965,31 +31967,9 @@ ${sourceFiles.join("\n")}
 
 Return a JSON array of the most relevant file paths (max 20 files). Consider the question topic and select files that would contain the answer.
 Respond ONLY with a JSON array of strings.`;
-    const fileSelectionResponse = await (0, shared_1.generateContent)(model, fileSelectionPrompt);
-    let relevantFiles;
-    try {
-        relevantFiles = (0, shared_1.parseJsonResponse)(fileSelectionResponse);
-        // Validate that selected files actually exist in our tree
-        relevantFiles = relevantFiles.filter((f) => sourceFiles.includes(f));
-    }
-    catch {
-        core.warning("Could not parse file selection, using first 15 source files");
-        relevantFiles = sourceFiles.slice(0, 15);
-    }
-    core.info(`Reading ${relevantFiles.length} relevant files...`);
-    // 4. Fetch content of relevant files
-    const fileContents = {};
-    for (const filePath of relevantFiles) {
-        try {
-            const content = await (0, shared_1.getFileContent)(octokit, owner, repo, filePath, defaultBranch.name);
-            fileContents[filePath] = (0, shared_1.truncateText)(content, 5000, filePath);
-        }
-        catch {
-            core.debug(`Could not read ${filePath}`);
-        }
-    }
-    // 5. Generate answer
-    const answerPrompt = `You are a knowledgeable assistant for the ${owner}/${repo} repository. A user has asked a question, and you have access to relevant source files. Answer the question with specific references to the code.
+}
+function buildAnswerPrompt(owner, repo, question, fileContents) {
+    return `You are a knowledgeable assistant for the ${owner}/${repo} repository. A user has asked a question, and you have access to relevant source files. Answer the question with specific references to the code.
 
 **Question:** ${question}
 
@@ -32004,7 +31984,82 @@ Guidelines:
 - If the source files don't contain enough information to fully answer the question, say so
 - Structure your answer clearly with headers if needed
 - Be concise but thorough`;
-    const answer = await (0, shared_1.generateContent)(model, answerPrompt);
+}
+
+
+/***/ }),
+
+/***/ 2292:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.runRepoQA = runRepoQA;
+const shared_1 = __nccwpck_require__(7451);
+const globs_1 = __nccwpck_require__(634);
+const prompts_1 = __nccwpck_require__(8606);
+async function runRepoQA(ctx, inputs) {
+    const { octokit, owner, repo, model } = ctx;
+    if (!inputs.issueNumber && !inputs.discussionId) {
+        throw new Error("Either issue_number or discussion_id must be provided");
+    }
+    // 1. Get the question
+    let question;
+    let questionTitle;
+    let responseTarget;
+    if (inputs.issueNumber) {
+        const issue = await (0, shared_1.getIssue)(octokit, owner, repo, inputs.issueNumber);
+        questionTitle = issue.title;
+        question = `${issue.title}\n\n${issue.body ?? ""}`;
+        responseTarget = { type: "issue", number: inputs.issueNumber };
+    }
+    else {
+        const discussionId = inputs.discussionId;
+        const { repository } = await octokit.graphql(`query($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          discussion(number: $number) {
+            title
+            body
+            number
+          }
+        }
+      }`, { owner, repo, number: parseInt(discussionId, 10) });
+        questionTitle = repository.discussion.title;
+        question = `${repository.discussion.title}\n\n${repository.discussion.body}`;
+        responseTarget = { type: "discussion", id: discussionId };
+    }
+    // 2. Get repository file tree and filter by source_paths
+    const defaultBranch = await (0, shared_1.getDefaultBranch)(octokit, owner, repo);
+    const tree = await (0, shared_1.getRepoTree)(octokit, owner, repo, defaultBranch.sha);
+    const globs = inputs.sourcePaths.split(",").map((s) => s.trim());
+    const sourceFiles = tree
+        .filter((item) => item.type === "blob")
+        .filter((item) => (0, globs_1.matchesAnyGlob)(item.path, globs))
+        .map((item) => item.path);
+    // 3. Ask Gemini to identify relevant files
+    const fileSelectionResponse = await (0, shared_1.generateContent)(model, (0, prompts_1.buildFileSelectionPrompt)(question, sourceFiles));
+    let relevantFiles;
+    try {
+        relevantFiles = (0, shared_1.parseJsonResponse)(fileSelectionResponse);
+        relevantFiles = relevantFiles.filter((f) => sourceFiles.includes(f));
+    }
+    catch {
+        relevantFiles = sourceFiles.slice(0, 15);
+    }
+    // 4. Fetch content of relevant files
+    const fileContents = {};
+    for (const filePath of relevantFiles) {
+        try {
+            const content = await (0, shared_1.getFileContent)(octokit, owner, repo, filePath, defaultBranch.name);
+            fileContents[filePath] = (0, shared_1.truncateText)(content, 5000, filePath);
+        }
+        catch {
+            // Skip files we can't read
+        }
+    }
+    // 5. Generate answer
+    const answer = await (0, shared_1.generateContent)(model, (0, prompts_1.buildAnswerPrompt)(owner, repo, question, fileContents));
     // 6. Post the answer
     const responseBody = `## Answer
 
@@ -32014,11 +32069,8 @@ ${answer}
 *Based on ${Object.keys(fileContents).length} source file(s) — Generated by [gemini-repo-qa](https://github.com/dortort/gemini-actions)*`;
     if (responseTarget.type === "issue") {
         await (0, shared_1.postComment)(octokit, owner, repo, responseTarget.number, responseBody);
-        core.info(`Answer posted on issue #${responseTarget.number}`);
     }
     else {
-        // Post discussion comment via GraphQL
-        // First get the discussion node ID
         const { repository } = await octokit.graphql(`query($owner: String!, $repo: String!, $number: Int!) {
         repository(owner: $owner, name: $repo) {
           discussion(number: $number) {
@@ -32033,9 +32085,8 @@ ${answer}
           }
         }
       }`, { discussionId: repository.discussion.id, body: responseBody });
-        core.info(`Answer posted on discussion #${responseTarget.id}`);
     }
-});
+}
 
 
 /***/ }),
