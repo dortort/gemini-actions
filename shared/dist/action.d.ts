@@ -13,6 +13,16 @@ export interface ActionContext {
  */
 export declare function getActionContext(): ActionContext;
 /**
+ * Build an ActionContext from pre-constructed dependencies.
+ * Useful in tests where you want to inject mocks without touching @actions/core.
+ */
+export declare function createActionContext(opts: {
+    octokit: Octokit;
+    owner: string;
+    repo: string;
+    model: GenerativeModel;
+}): ActionContext;
+/**
  * Wrap an action's main logic with consistent error handling.
  * Catches errors and calls `core.setFailed` so every action doesn't have to.
  */

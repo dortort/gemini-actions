@@ -26,5 +26,5 @@ export type {
   IssueInfo,
   ReviewComment,
 } from "./github";
-export { getActionContext, runAction } from "./action";
+export { getActionContext, createActionContext, runAction } from "./action";
 export type { ActionContext } from "./action";
