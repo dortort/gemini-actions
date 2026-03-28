@@ -31435,6 +31435,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getActionContext = getActionContext;
+exports.createActionContext = createActionContext;
 exports.runAction = runAction;
 const core = __importStar(__nccwpck_require__(6618));
 const gemini_1 = __nccwpck_require__(9700);
@@ -31451,6 +31452,13 @@ function getActionContext() {
     const { owner, repo } = (0, github_1.getRepoContext)();
     const model = (0, gemini_1.createGeminiModel)(geminiApiKey, modelName);
     return { octokit, owner, repo, model };
+}
+/**
+ * Build an ActionContext from pre-constructed dependencies.
+ * Useful in tests where you want to inject mocks without touching @actions/core.
+ */
+function createActionContext(opts) {
+    return opts;
 }
 /**
  * Wrap an action's main logic with consistent error handling.
@@ -31828,7 +31836,7 @@ async function listReleaseNotesBetween(octokit, owner, repo, fromVersion, toVers
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.runAction = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
+exports.runAction = exports.createActionContext = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
 var gemini_1 = __nccwpck_require__(9700);
 Object.defineProperty(exports, "createGeminiModel", ({ enumerable: true, get: function () { return gemini_1.createGeminiModel; } }));
 Object.defineProperty(exports, "generateContent", ({ enumerable: true, get: function () { return gemini_1.generateContent; } }));
@@ -31851,8 +31859,99 @@ Object.defineProperty(exports, "getRepoTree", ({ enumerable: true, get: function
 Object.defineProperty(exports, "listReleaseNotesBetween", ({ enumerable: true, get: function () { return github_1.listReleaseNotesBetween; } }));
 var action_1 = __nccwpck_require__(6941);
 Object.defineProperty(exports, "getActionContext", ({ enumerable: true, get: function () { return action_1.getActionContext; } }));
+Object.defineProperty(exports, "createActionContext", ({ enumerable: true, get: function () { return action_1.createActionContext; } }));
 Object.defineProperty(exports, "runAction", ({ enumerable: true, get: function () { return action_1.runAction; } }));
 //# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 7027:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.createDatadogClient = createDatadogClient;
+const https = __importStar(__nccwpck_require__(5692));
+async function datadogRequest(apiKey, appKey, endpoint, params) {
+    const url = new URL(`https://api.datadoghq.com${endpoint}`);
+    if (params) {
+        for (const [key, value] of Object.entries(params)) {
+            url.searchParams.set(key, value);
+        }
+    }
+    return new Promise((resolve, reject) => {
+        const req = https.get(url, {
+            headers: {
+                "DD-API-KEY": apiKey,
+                "DD-APPLICATION-KEY": appKey,
+                "Content-Type": "application/json",
+            },
+        }, (res) => {
+            let body = "";
+            res.on("data", (chunk) => (body += chunk));
+            res.on("end", () => {
+                try {
+                    resolve(JSON.parse(body));
+                }
+                catch {
+                    reject(new Error(`Failed to parse Datadog response: ${body.slice(0, 500)}`));
+                }
+            });
+        });
+        req.on("error", reject);
+    });
+}
+function createDatadogClient(apiKey, appKey) {
+    return {
+        async queryMetrics(query) {
+            const now = Math.floor(Date.now() / 1000);
+            const oneHourAgo = now - 3600;
+            return (await datadogRequest(apiKey, appKey, "/api/v1/query", {
+                from: oneHourAgo.toString(),
+                to: now.toString(),
+                query,
+            }));
+        },
+        async getMonitor(monitorId) {
+            return (await datadogRequest(apiKey, appKey, `/api/v1/monitor/${monitorId}`));
+        },
+    };
+}
+
 
 /***/ }),
 
@@ -31896,95 +31995,38 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(6618));
-const https = __importStar(__nccwpck_require__(5692));
 const shared_1 = __nccwpck_require__(7451);
-async function datadogRequest(apiKey, appKey, endpoint, params) {
-    const url = new URL(`https://api.datadoghq.com${endpoint}`);
-    if (params) {
-        for (const [key, value] of Object.entries(params)) {
-            url.searchParams.set(key, value);
-        }
-    }
-    return new Promise((resolve, reject) => {
-        const req = https.get(url, {
-            headers: {
-                "DD-API-KEY": apiKey,
-                "DD-APPLICATION-KEY": appKey,
-                "Content-Type": "application/json",
-            },
-        }, (res) => {
-            let body = "";
-            res.on("data", (chunk) => (body += chunk));
-            res.on("end", () => {
-                try {
-                    resolve(JSON.parse(body));
-                }
-                catch {
-                    reject(new Error(`Failed to parse Datadog response: ${body.slice(0, 500)}`));
-                }
-            });
-        });
-        req.on("error", reject);
-    });
-}
-async function queryMetrics(apiKey, appKey, query) {
-    const now = Math.floor(Date.now() / 1000);
-    const oneHourAgo = now - 3600;
-    return (await datadogRequest(apiKey, appKey, "/api/v1/query", {
-        from: oneHourAgo.toString(),
-        to: now.toString(),
-        query,
-    }));
-}
-async function getMonitor(apiKey, appKey, monitorId) {
-    return (await datadogRequest(apiKey, appKey, `/api/v1/monitor/${monitorId}`));
-}
+const datadog_1 = __nccwpck_require__(7027);
+const run_1 = __nccwpck_require__(2292);
 (0, shared_1.runAction)(async () => {
+    const ctx = (0, shared_1.getActionContext)();
     const ddApiKey = core.getInput("datadog_api_key", { required: true });
     const ddAppKey = core.getInput("datadog_app_key", { required: true });
     const query = core.getInput("query", { required: true });
     const action = core.getInput("action", { required: true });
-    const validActions = [
-        "open_issue",
-        "comment_on_pr",
-        "trigger_workflow",
-    ];
-    if (!validActions.includes(action)) {
-        throw new Error(`Invalid action: ${action}. Must be one of: ${validActions.join(", ")}`);
-    }
-    const { octokit, owner, repo, model } = (0, shared_1.getActionContext)();
     core.info(`Querying Datadog: ${query}`);
-    // 1. Query Datadog - determine if it's a monitor ID or a metrics query
-    let datadogData;
-    const isMonitorId = /^\d+$/.test(query.trim());
-    if (isMonitorId) {
-        const monitor = await getMonitor(ddApiKey, ddAppKey, query.trim());
-        datadogData = JSON.stringify(monitor, null, 2);
-        core.info(`Monitor "${monitor.name}" state: ${monitor.overall_state}`);
-    }
-    else {
-        const metrics = await queryMetrics(ddApiKey, ddAppKey, query);
-        datadogData = JSON.stringify(metrics, null, 2);
-        core.info(`Metrics query returned ${metrics.series?.length ?? 0} series`);
-    }
-    // 2. Get recent commits for correlation
-    const { data: commits } = await octokit.rest.repos.listCommits({
-        owner,
-        repo,
-        per_page: 10,
-    });
-    const recentCommits = commits.map((c) => ({
-        sha: c.sha.slice(0, 7),
-        message: c.commit.message.split("\n")[0],
-        date: c.commit.author?.date,
-        author: c.commit.author?.name,
-    }));
-    // 3. Ask Gemini to interpret the data
-    const prompt = `You are a site reliability engineer analyzing monitoring data from Datadog in the context of a GitHub repository.
+    const ddClient = (0, datadog_1.createDatadogClient)(ddApiKey, ddAppKey);
+    const resultId = await (0, run_1.runDatadogResponder)(ctx, { query, action }, ddClient);
+    core.info(`Action completed: ${resultId}`);
+    core.setOutput("result", resultId);
+});
+
+
+/***/ }),
+
+/***/ 8606:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.buildAnalysisPrompt = buildAnalysisPrompt;
+function buildAnalysisPrompt(datadogData, isMonitorId, recentCommits, owner, repo, action) {
+    return `You are a site reliability engineer analyzing monitoring data from Datadog in the context of a GitHub repository.
 
 **Datadog ${isMonitorId ? "Monitor" : "Metrics"} Data:**
 \`\`\`json
-${(0, shared_1.truncateText)(datadogData, 10000, "Datadog data")}
+${datadogData}
 \`\`\`
 
 **Recent Commits (last 10):**
@@ -31999,6 +32041,56 @@ Analyze the monitoring data and provide:
 4. **Recommended Action**: What should be done next?
 
 Format your response as structured markdown suitable for a GitHub ${action === "open_issue" ? "issue body" : "comment"}.`;
+}
+
+
+/***/ }),
+
+/***/ 2292:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.runDatadogResponder = runDatadogResponder;
+const shared_1 = __nccwpck_require__(7451);
+const prompts_1 = __nccwpck_require__(8606);
+async function runDatadogResponder(ctx, inputs, ddClient) {
+    const { octokit, owner, repo, model } = ctx;
+    const { query, action } = inputs;
+    const validActions = [
+        "open_issue",
+        "comment_on_pr",
+        "trigger_workflow",
+    ];
+    if (!validActions.includes(action)) {
+        throw new Error(`Invalid action: ${action}. Must be one of: ${validActions.join(", ")}`);
+    }
+    // 1. Query Datadog
+    let datadogData;
+    const isMonitorId = /^\d+$/.test(query.trim());
+    if (isMonitorId) {
+        const monitor = await ddClient.getMonitor(query.trim());
+        datadogData = JSON.stringify(monitor, null, 2);
+    }
+    else {
+        const metrics = await ddClient.queryMetrics(query);
+        datadogData = JSON.stringify(metrics, null, 2);
+    }
+    // 2. Get recent commits for correlation
+    const { data: commits } = await octokit.rest.repos.listCommits({
+        owner,
+        repo,
+        per_page: 10,
+    });
+    const recentCommits = commits.map((c) => ({
+        sha: c.sha.slice(0, 7),
+        message: c.commit.message.split("\n")[0],
+        date: c.commit.author?.date,
+        author: c.commit.author?.name,
+    }));
+    // 3. Ask Gemini to interpret the data
+    const prompt = (0, prompts_1.buildAnalysisPrompt)((0, shared_1.truncateText)(datadogData, 10000, "Datadog data"), isMonitorId, recentCommits, owner, repo, action);
     const analysis = await (0, shared_1.generateContent)(model, prompt);
     // 4. Take the specified action
     let resultId;
@@ -32012,11 +32104,9 @@ Format your response as structured markdown suitable for a GitHub ${action === "
                 labels: ["datadog", "automated"],
             });
             resultId = issue.number.toString();
-            core.info(`Created issue #${resultId}`);
             break;
         }
         case "comment_on_pr": {
-            // Find the most recent open PR
             const { data: prs } = await octokit.rest.pulls.list({
                 owner,
                 repo,
@@ -32031,11 +32121,9 @@ Format your response as structured markdown suitable for a GitHub ${action === "
             const prNumber = prs[0].number;
             await (0, shared_1.postComment)(octokit, owner, repo, prNumber, `## Datadog Alert Analysis\n\n${analysis}\n\n---\n*Generated by [gemini-datadog-responder](https://github.com/dortort/gemini-actions)*`);
             resultId = prNumber.toString();
-            core.info(`Commented on PR #${resultId}`);
             break;
         }
         case "trigger_workflow": {
-            // Trigger the repository_dispatch event so users can listen for it
             await octokit.rest.repos.createDispatchEvent({
                 owner,
                 repo,
@@ -32047,12 +32135,11 @@ Format your response as structured markdown suitable for a GitHub ${action === "
                 },
             });
             resultId = "dispatch-sent";
-            core.info("Triggered repository_dispatch event: datadog-alert");
             break;
         }
     }
-    core.setOutput("result", resultId);
-});
+    return resultId;
+}
 
 
 /***/ }),
