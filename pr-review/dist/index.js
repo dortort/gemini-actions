@@ -31435,6 +31435,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getActionContext = getActionContext;
+exports.createActionContext = createActionContext;
 exports.runAction = runAction;
 const core = __importStar(__nccwpck_require__(6618));
 const gemini_1 = __nccwpck_require__(9700);
@@ -31451,6 +31452,13 @@ function getActionContext() {
     const { owner, repo } = (0, github_1.getRepoContext)();
     const model = (0, gemini_1.createGeminiModel)(geminiApiKey, modelName);
     return { octokit, owner, repo, model };
+}
+/**
+ * Build an ActionContext from pre-constructed dependencies.
+ * Useful in tests where you want to inject mocks without touching @actions/core.
+ */
+function createActionContext(opts) {
+    return opts;
 }
 /**
  * Wrap an action's main logic with consistent error handling.
@@ -31828,7 +31836,7 @@ async function listReleaseNotesBetween(octokit, owner, repo, fromVersion, toVers
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.runAction = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
+exports.runAction = exports.createActionContext = exports.getActionContext = exports.listReleaseNotesBetween = exports.getRepoTree = exports.getDefaultBranch = exports.createBranch = exports.createOrUpdateFile = exports.createReview = exports.createPullRequest = exports.postComment = exports.getFileContent = exports.getPullRequest = exports.getIssue = exports.getRepoContext = exports.getOctokitClient = exports.parseJsonResponse = exports.truncateText = exports.countTokens = exports.generateContent = exports.createGeminiModel = void 0;
 var gemini_1 = __nccwpck_require__(9700);
 Object.defineProperty(exports, "createGeminiModel", ({ enumerable: true, get: function () { return gemini_1.createGeminiModel; } }));
 Object.defineProperty(exports, "generateContent", ({ enumerable: true, get: function () { return gemini_1.generateContent; } }));
@@ -31851,6 +31859,7 @@ Object.defineProperty(exports, "getRepoTree", ({ enumerable: true, get: function
 Object.defineProperty(exports, "listReleaseNotesBetween", ({ enumerable: true, get: function () { return github_1.listReleaseNotesBetween; } }));
 var action_1 = __nccwpck_require__(6941);
 Object.defineProperty(exports, "getActionContext", ({ enumerable: true, get: function () { return action_1.getActionContext; } }));
+Object.defineProperty(exports, "createActionContext", ({ enumerable: true, get: function () { return action_1.createActionContext; } }));
 Object.defineProperty(exports, "runAction", ({ enumerable: true, get: function () { return action_1.runAction; } }));
 //# sourceMappingURL=index.js.map
 
@@ -31897,25 +31906,35 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(6618));
 const shared_1 = __nccwpck_require__(7451);
-const STRICTNESS_PROMPTS = {
+const run_1 = __nccwpck_require__(2292);
+(0, shared_1.runAction)(async () => {
+    const ctx = (0, shared_1.getActionContext)();
+    const inputs = {
+        prNumber: parseInt(core.getInput("pr_number", { required: true }), 10),
+        strictness: core.getInput("review_strictness") || "medium",
+    };
+    await (0, run_1.runPrReview)(ctx, inputs);
+});
+
+
+/***/ }),
+
+/***/ 8606:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.STRICTNESS_PROMPTS = void 0;
+exports.buildFileSections = buildFileSections;
+exports.buildReviewPrompt = buildReviewPrompt;
+const shared_1 = __nccwpck_require__(7451);
+exports.STRICTNESS_PROMPTS = {
     low: "Focus only on critical issues: security vulnerabilities, data loss risks, and clear bugs. Ignore style, naming, and minor improvements.",
     medium: "Review for bugs, security issues, performance problems, and significant design concerns. Note style issues only if they hurt readability.",
     high: "Perform a thorough review covering bugs, security, performance, design, error handling, edge cases, naming conventions, and code style.",
 };
-(0, shared_1.runAction)(async () => {
-    const prNumber = parseInt(core.getInput("pr_number", { required: true }), 10);
-    const strictness = core.getInput("review_strictness") || "medium";
-    if (!STRICTNESS_PROMPTS[strictness]) {
-        throw new Error(`Invalid review_strictness: ${strictness}. Must be low, medium, or high.`);
-    }
-    const { octokit, owner, repo, model } = (0, shared_1.getActionContext)();
-    core.info(`Reviewing PR #${prNumber} with ${strictness} strictness...`);
-    // 1. Get PR details and diff
-    const pr = await (0, shared_1.getPullRequest)(octokit, owner, repo, prNumber);
-    core.info(`PR: ${pr.title} (${pr.files.length} files changed)`);
-    // 2. Build the review prompt with truncated diffs
-    const maxPatchPerFile = 10000;
-    const maxTotalDiff = 200000;
+function buildFileSections(pr, maxPatchPerFile = 10000, maxTotalDiff = 200000) {
     let totalDiffChars = 0;
     const fileSections = [];
     for (const f of pr.files) {
@@ -31929,10 +31948,13 @@ const STRICTNESS_PROMPTS = {
         totalDiffChars += truncatedPatch.length;
         fileSections.push(`### ${f.filename} (${f.status}: +${f.additions} -${f.deletions})\n\`\`\`diff\n${truncatedPatch}\n\`\`\``);
     }
-    const prompt = `You are an expert code reviewer. Review the following pull request.
+    return fileSections;
+}
+function buildReviewPrompt(pr, strictness, fileSections) {
+    return `You are an expert code reviewer. Review the following pull request.
 
 **Review Strictness:** ${strictness}
-${STRICTNESS_PROMPTS[strictness]}
+${exports.STRICTNESS_PROMPTS[strictness]}
 
 **PR Title:** ${pr.title}
 **PR Description:** ${pr.body ?? "No description provided."}
@@ -31961,6 +31983,70 @@ Guidelines:
 - The summary should give an overall assessment and highlight the most important findings
 
 Respond ONLY with the JSON object.`;
+}
+
+
+/***/ }),
+
+/***/ 6701:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.filterValidComments = filterValidComments;
+exports.buildSummaryBody = buildSummaryBody;
+const SEVERITY_EMOJI = {
+    critical: "[CRITICAL]",
+    warning: "[WARNING]",
+    suggestion: "[SUGGESTION]",
+    nitpick: "[NITPICK]",
+};
+function filterValidComments(comments, pr) {
+    return comments
+        .filter((c) => {
+        const fileInPR = pr.files.some((f) => f.filename === c.path);
+        return fileInPR && c.line > 0;
+    })
+        .map((c) => ({
+        path: c.path,
+        line: c.line,
+        body: `${SEVERITY_EMOJI[c.severity] || ""} ${c.comment}`,
+    }));
+}
+function buildSummaryBody(review, strictness) {
+    return `## Gemini Code Review (${strictness} strictness)
+
+${review.summary}
+
+---
+*${review.comments.length} comment(s) across ${new Set(review.comments.map((c) => c.path)).size} file(s) — Generated by [gemini-pr-review](https://github.com/dortort/gemini-actions)*`;
+}
+
+
+/***/ }),
+
+/***/ 2292:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.runPrReview = runPrReview;
+const shared_1 = __nccwpck_require__(7451);
+const prompts_1 = __nccwpck_require__(8606);
+const review_1 = __nccwpck_require__(6701);
+async function runPrReview(ctx, inputs) {
+    const { octokit, owner, repo, model } = ctx;
+    const { prNumber, strictness } = inputs;
+    if (!prompts_1.STRICTNESS_PROMPTS[strictness]) {
+        throw new Error(`Invalid review_strictness: ${strictness}. Must be low, medium, or high.`);
+    }
+    // 1. Get PR details and diff
+    const pr = await (0, shared_1.getPullRequest)(octokit, owner, repo, prNumber);
+    // 2. Build the review prompt with truncated diffs
+    const fileSections = (0, prompts_1.buildFileSections)(pr);
+    const prompt = (0, prompts_1.buildReviewPrompt)(pr, strictness, fileSections);
     const response = await (0, shared_1.generateContent)(model, prompt);
     let review;
     try {
@@ -31968,39 +32054,14 @@ Respond ONLY with the JSON object.`;
     }
     catch {
         // If parsing fails, post the raw response as a comment
-        core.warning("Could not parse structured review, posting as plain comment");
         await (0, shared_1.createReview)(octokit, owner, repo, prNumber, `## Gemini Code Review (${strictness} strictness)\n\n${response}`);
         return;
     }
     // 3. Format and post the review
-    const severityEmoji = {
-        critical: "[CRITICAL]",
-        warning: "[WARNING]",
-        suggestion: "[SUGGESTION]",
-        nitpick: "[NITPICK]",
-    };
-    const reviewComments = review.comments
-        .filter((c) => {
-        const fileInPR = pr.files.some((f) => f.filename === c.path);
-        if (!fileInPR) {
-            core.warning(`Skipping comment for ${c.path}: file not in PR diff`);
-        }
-        return fileInPR && c.line > 0;
-    })
-        .map((c) => ({
-        path: c.path,
-        line: c.line,
-        body: `${severityEmoji[c.severity] || ""} ${c.comment}`,
-    }));
-    const summaryBody = `## Gemini Code Review (${strictness} strictness)
-
-${review.summary}
-
----
-*${review.comments.length} comment(s) across ${new Set(review.comments.map((c) => c.path)).size} file(s) — Generated by [gemini-pr-review](https://github.com/dortort/gemini-actions)*`;
+    const reviewComments = (0, review_1.filterValidComments)(review.comments, pr);
+    const summaryBody = (0, review_1.buildSummaryBody)(review, strictness);
     await (0, shared_1.createReview)(octokit, owner, repo, prNumber, summaryBody, reviewComments);
-    core.info(`Review posted: ${review.comments.length} comments, ${reviewComments.length} inline`);
-});
+}
 
 
 /***/ }),
