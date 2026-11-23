@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dortort/gemini-actions/pr-review@v1
+      - uses: dortort/gemini-actions/pr-review@v0
         with:
           pr_number: ${{ github.event.pull_request.number }}
           review_strictness: medium
