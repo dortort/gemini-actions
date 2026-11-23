@@ -4,7 +4,7 @@ author: "dortort"
 
 inputs:
   action:
-    description: "This is a meta-package. Use the individual actions in subdirectories (e.g. dortort/gemini-actions/pr-review@v1)."
+    description: "This is a meta-package. Use the individual actions in subdirectories (e.g. dortort/gemini-actions/pr-review@v0)."
     required: false
 
 branding:
@@ -18,9 +18,9 @@ runs:
       shell: bash
       run: |
         echo "::notice::This is a meta-package. Use individual actions instead:"
-        echo "::notice::  - dortort/gemini-actions/pr-review@v1"
-        echo "::notice::  - dortort/gemini-actions/pr-from-issue@v1"
-        echo "::notice::  - dortort/gemini-actions/dependency-impact@v1"
-        echo "::notice::  - dortort/gemini-actions/test-failure-diagnosis@v1"
-        echo "::notice::  - dortort/gemini-actions/datadog-responder@v1"
-        echo "::notice::  - dortort/gemini-actions/repo-qa@v1"
+        echo "::notice::  - dortort/gemini-actions/pr-review@v0"
+        echo "::notice::  - dortort/gemini-actions/pr-from-issue@v0"
+        echo "::notice::  - dortort/gemini-actions/dependency-impact@v0"
+        echo "::notice::  - dortort/gemini-actions/test-failure-diagnosis@v0"
+        echo "::notice::  - dortort/gemini-actions/datadog-responder@v0"
+        echo "::notice::  - dortort/gemini-actions/repo-qa@v0"
